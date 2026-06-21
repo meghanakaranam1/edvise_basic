@@ -1,0 +1,2187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Edvise — Student Success Platform</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&family=DM+Mono:wght@400;500&display=swap');
+
+  *{box-sizing:border-box;margin:0;padding:0;}
+  :root{
+    /* Backgrounds — clean warm white */
+    --bg:#F4F6F8;
+    --bg2:#EAECF0;
+    --bg3:#DFE2E8;
+    --surface:#FFFFFF;
+    --border:#D8DCE4;
+    --border2:#C4C9D4;
+
+    /* Text */
+    --text:#1B3256;
+    --text2:#4A5A72;
+    --text3:#8A9BB8;
+
+    /* Teal — primary interaction: active nav, tabs, pills, source bar */
+    --primary:#1B7A7A;
+    --primary-light:#E6F5F5;
+    --primary-mid:#4AADAD;
+    --purple:#1B7A7A;
+    --purple-light:#E6F5F5;
+    --purple-mid:#4AADAD;
+
+    /* Navy — sidebar bg, headings, send button */
+    --navy:#1B3566;
+    --navy-light:#E8EDF5;
+    --navy-mid:#5A6E8A;
+
+    /* Gold — CTA buttons, save, outlined actions only */
+    --gold:#C8963E;
+    --gold-light:#FBF3E6;
+    --gold-mid:#E8BA72;
+
+    /* Green — on-track, success, in KB */
+    --green:#1A7F5A;
+    --green-light:#E4F5EE;
+    --green-mid:#52C49A;
+
+    /* Amber — pending, warnings */
+    --amber:#9A6B10;
+    --amber-light:#FDF4E3;
+    --amber-mid:#F0C060;
+
+    /* Red/coral — critical risk only */
+    --red:#C0392B;
+    --red-light:#FCECEA;
+    --coral:#D95E3A;
+    --coral-light:#FDF0EC;
+
+    /* Blue — data context */
+    --blue:#1A5FAB;
+    --blue-light:#E6F0FB;
+
+    --radius:8px;
+    --radius-lg:12px;
+    --radius-xl:16px;
+  }
+
+  html,body{height:100%;font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);font-size:12px;overflow:hidden;}
+
+  /* VIEW SWITCHING */
+  .view{display:none;flex:1;flex-direction:column;min-width:0;}
+  .view.active{display:flex;}
+
+  /* LIBRARY PAGE */
+  .lib-page{display:flex;flex:1;overflow:hidden;}
+  .lib-page-left{width:220px;min-width:220px;border-right:1px solid var(--border);background:var(--bg2);display:flex;flex-direction:column;}
+  .lib-page-left-head{padding:16px 14px 12px;border-bottom:1px solid var(--border);}
+  .lib-page-left-title{font-size:13px;font-weight:600;color:var(--text);margin-bottom:10px;}
+  .lib-search2{display:flex;align-items:center;gap:7px;background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius);padding:6px 10px;}
+  .lib-search2 svg{width:12px;height:12px;opacity:.4;flex-shrink:0;}
+  .lib-search2 input{flex:1;border:none;outline:none;font-size:12px;background:transparent;color:var(--text);font-family:'DM Sans',sans-serif;}
+  .lib-search2 input::placeholder{color:var(--text3);}
+  .lib-page-left-body{flex:1;overflow-y:auto;padding:8px 10px;}
+  .lib-folder{display:flex;align-items:center;gap:8px;padding:8px 9px;border-radius:var(--radius);cursor:pointer;margin-bottom:2px;border:1px solid transparent;transition:all .15s;}
+  .lib-folder:hover{background:var(--surface);}
+  .lib-folder.sel{background:var(--surface);border-color:var(--border2);}
+  .lib-folder-icon{width:22px;height:22px;border-radius:5px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+  .lib-folder-icon svg{width:12px;height:12px;}
+  .lib-folder-name{font-size:12px;font-weight:500;color:var(--text);flex:1;}
+  .lib-folder.sel .lib-folder-name{color:var(--green);}
+  .lib-folder-count{font-size:10px;color:var(--text3);}
+  .lib-folder-badge{font-size:10px;padding:1px 6px;border-radius:20px;background:var(--amber-light);color:var(--amber);border:1px solid var(--amber-mid);font-weight:600;}
+  .lib-upload-zone{margin:10px;border:1px dashed var(--border2);border-radius:var(--radius-lg);padding:14px;text-align:center;cursor:pointer;transition:all .15s;}
+  .lib-upload-zone:hover{border-color:var(--green);background:var(--green-light);}
+  .lib-upload-title{font-size:12px;font-weight:500;color:var(--text2);}
+  .lib-upload-zone:hover .lib-upload-title{color:var(--green);}
+  .lib-upload-sub{font-size:10px;color:var(--text3);margin-top:2px;}
+  .lib-fmts{display:flex;gap:4px;justify-content:center;margin-top:8px;}
+  .lib-fmt{padding:2px 7px;border-radius:20px;font-size:10px;background:var(--surface);color:var(--text2);border:1px solid var(--border);font-family:'DM Mono',monospace;}
+
+  /* LIBRARY RIGHT: doc list */
+  .lib-page-right{flex:1;display:flex;flex-direction:column;min-width:0;background:var(--surface);}
+  .lib-page-head{padding:18px 24px 14px;border-bottom:1px solid var(--border);flex-shrink:0;}
+  .lib-page-head-top{display:flex;align-items:flex-start;margin-bottom:16px;}
+  .lib-school-info{display:flex;align-items:center;gap:10px;flex:1;}
+  .lib-school-av{width:36px;height:36px;border-radius:9px;background:var(--primary-light);border:1px solid var(--primary-mid);display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+  .lib-school-name{font-size:16px;font-weight:600;color:var(--text);}
+  .lib-school-sub{font-size:11px;color:var(--text3);margin-top:2px;}
+  .lib-head-btn{padding:7px 16px;border-radius:var(--radius);border:1px solid var(--border2);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;display:flex;align-items:center;gap:6px;transition:all .15s;}
+  .lib-head-btn.primary{background:transparent;color:var(--gold);border:1.5px solid var(--gold);}
+  .lib-head-btn.primary:hover{background:var(--gold);color:white;}
+  .lib-head-btn svg{width:13px;height:13px;}
+
+  .lib-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;}
+  .lib-stat{padding:11px 14px;background:var(--bg2);border-radius:var(--radius-lg);}
+  .lib-stat-n{font-size:22px;font-weight:600;color:var(--text);}
+  .lib-stat-l{font-size:11px;color:var(--text2);margin-top:2px;font-weight:500;}
+
+  /* pending banner */
+  .lib-pending-banner{margin:14px 24px 0;padding:12px 16px;background:var(--amber-light);border:1px solid var(--amber-mid);border-radius:var(--radius-lg);flex-shrink:0;}
+  .lib-pb-head{display:flex;align-items:center;gap:7px;margin-bottom:8px;}
+  .lib-pb-title{font-size:12px;font-weight:600;color:#633806;}
+  .lib-pb-row{display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(--surface);border-radius:var(--radius);border:1px solid var(--amber-mid);}
+  .lib-pb-name{font-size:12px;font-weight:500;color:#633806;flex:1;}
+  .lib-pb-reason{font-size:11px;color:var(--amber);}
+  .lib-pb-btns{display:flex;gap:6px;}
+  .lib-pb-btn{padding:5px 13px;border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;}
+  .lib-approve{background:var(--green);color:white;border:none;}
+  .lib-reject{background:var(--surface);border:1px solid var(--amber-mid);color:var(--amber);}
+
+  /* filters */
+  .lib-filters{display:flex;align-items:center;gap:7px;padding:10px 24px;border-bottom:1px solid var(--border);flex-shrink:0;}
+  .lib-fp{padding:4px 13px;border-radius:20px;border:1px solid var(--border);font-size:12px;color:var(--text2);cursor:pointer;font-weight:500;transition:all .15s;}
+  .lib-fp:hover{border-color:var(--border2);}
+  .lib-fp.on{background:var(--green-light);border-color:var(--green-mid);color:var(--green);}
+  .lib-sort{margin-left:auto;padding:5px 10px;border-radius:var(--radius);border:1px solid var(--border2);font-size:12px;color:var(--text2);background:var(--surface);cursor:pointer;font-family:'DM Sans',sans-serif;outline:none;}
+
+  /* doc table */
+  .lib-table{flex:1;overflow-y:auto;padding:0 24px;}
+  .lib-table-head{display:grid;grid-template-columns:2.5fr 100px 110px 110px 80px;padding:10px 0 8px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--surface);}
+  .lib-th{font-size:10px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;}
+  .lib-doc-row{display:grid;grid-template-columns:2.5fr 100px 110px 110px 80px;align-items:center;padding:11px 0;border-bottom:1px solid var(--border);cursor:pointer;transition:background .12s;}
+  .lib-doc-row:hover{background:var(--bg2);margin:0 -24px;padding:11px 24px;}
+  .lib-doc-row:last-child{border-bottom:none;}
+  .lib-doc-name-cell{display:flex;align-items:center;gap:10px;min-width:0;}
+  .lib-doc-icon{width:32px;height:32px;border-radius:7px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+  .lib-doc-icon.pdf{background:#FAECE7;}
+  .lib-doc-icon.docx{background:var(--blue-light);}
+  .lib-doc-icon.xlsx{background:#EAF3DE;}
+  .lib-doc-title{font-size:13px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .lib-doc-sub{font-size:11px;color:var(--text3);margin-top:1px;}
+  .lib-doc-cell{font-size:12px;color:var(--text2);font-weight:500;}
+  .lib-doc-cell.muted{font-size:11px;color:var(--text3);font-weight:400;}
+  .lib-who{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text2);}
+  .lib-who-av{width:20px;height:20px;border-radius:50%;background:var(--bg2);border:1px solid var(--border2);display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:var(--text2);}
+  .lib-status{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600;}
+  .s-inkb{background:var(--green-light);color:var(--green);border:1px solid var(--green-mid);}
+  .s-new{background:var(--purple-light);color:var(--purple);border:1px solid var(--purple-mid);}
+  .s-pend{background:var(--amber-light);color:var(--amber);border:1px solid var(--amber-mid);}
+  .lib-doc-actions{display:flex;gap:5px;justify-content:flex-end;}
+  .lib-doc-btn{width:26px;height:26px;border-radius:var(--radius);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--text3);}
+  .lib-doc-btn:hover{border-color:var(--border2);color:var(--text);}
+  .lib-doc-btn svg{width:12px;height:12px;}
+
+  .app{display:flex;height:100vh;background:var(--bg);}
+
+  /* MAIN NAV SIDEBAR */
+  .icon-nav{width:170px;min-width:170px;background:linear-gradient(160deg,#1B3566 0%,#1B6E6E 100%);border-right:none;display:flex;flex-direction:column;padding:12px 0 12px;gap:0;}
+  .logo-row{display:flex;align-items:center;gap:8px;padding:0 12px 16px;}
+  .logo{width:28px;height:28px;border-radius:8px;background:var(--gold-mid);display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+  .logo span{color:#1B3566;font-size:13px;font-weight:700;letter-spacing:-.5px;}
+  .logo-name{font-size:14px;font-weight:600;color:white;letter-spacing:-.3px;}
+  .logo-name span{color:var(--gold-mid);}
+  .nav-section{font-size:9px;font-weight:600;color:rgba(255,255,255,0.38);text-transform:uppercase;letter-spacing:.08em;padding:10px 12px 4px;}
+  .ni{display:flex;align-items:center;gap:8px;padding:7px 12px;border-radius:0;cursor:pointer;color:rgba(255,255,255,0.55);position:relative;transition:all .15s;font-size:12px;font-weight:500;border-left:2px solid transparent;}
+  .ni:hover{background:rgba(255,255,255,0.08);color:rgba(255,255,255,0.9);}
+  .ni.active{background:rgba(255,255,255,0.12);color:white;border-left-color:var(--gold-mid);}
+  .ni svg{width:15px;height:15px;flex-shrink:0;opacity:.55;}
+  .ni.active svg{opacity:1;}
+  .ni-label{flex:1;}
+  .ni-badge{background:var(--gold-mid);color:#1B3566;font-size:10px;font-weight:700;padding:1px 7px;border-radius:20px;white-space:nowrap;}
+  .sp{flex:1;}
+  .nav-divider{height:1px;background:rgba(255,255,255,0.1);margin:8px 0;}
+
+  /* LIBRARY */
+  .library{width:200px;min-width:200px;border-right:1px solid var(--border);display:flex;flex-direction:column;background:var(--bg2);}
+  .lib-head{padding:16px 14px 12px;border-bottom:1px solid var(--border);}
+  .school-badge{display:flex;align-items:center;gap:9px;margin-bottom:12px;}
+  .school-av{width:32px;height:32px;border-radius:9px;background:var(--green-light);border:1px solid var(--green-mid);display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+  .school-name{font-size:13px;font-weight:600;color:var(--text);}
+  .school-sub{font-size:11px;color:var(--text3);margin-top:1px;}
+  .lib-search{display:flex;align-items:center;gap:7px;background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius);padding:6px 10px;}
+  .lib-search svg{width:13px;height:13px;opacity:.4;flex-shrink:0;}
+  .lib-search input{flex:1;border:none;outline:none;font-size:12px;background:transparent;color:var(--text);font-family:'DM Sans',sans-serif;}
+  .lib-search input::placeholder{color:var(--text3);}
+
+  .lib-body{flex:1;overflow-y:auto;padding:8px 10px;}
+  .sec-label{font-size:10px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;padding:10px 4px 5px;}
+
+  .folder-row{display:flex;align-items:center;gap:8px;padding:8px 9px;border-radius:var(--radius);cursor:pointer;margin-bottom:2px;border:1px solid transparent;transition:all .15s;}
+  .folder-row:hover{background:var(--surface);}
+  .folder-row.sel{background:var(--surface);border-color:var(--border2);}
+  .fi{width:24px;height:24px;border-radius:6px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+  .fi svg{width:13px;height:13px;}
+  .fo-info{flex:1;min-width:0;}
+  .fo-name{font-size:12px;font-weight:500;color:var(--text);}
+  .folder-row.sel .fo-name{color:var(--green);}
+  .fo-count{font-size:10px;color:var(--text3);margin-top:1px;}
+  .b-p{font-size:10px;padding:1px 7px;border-radius:20px;background:var(--amber-light);color:var(--amber);border:1px solid var(--amber-mid);white-space:nowrap;flex-shrink:0;font-weight:500;}
+
+  .doc-list{margin:3px 0 4px 6px;display:flex;flex-direction:column;gap:2px;}
+  .doc-item{display:flex;align-items:center;gap:7px;padding:6px 8px;border-radius:var(--radius);cursor:pointer;border:1px solid var(--border);background:var(--surface);transition:all .15s;}
+  .doc-item:hover{border-color:var(--border2);}
+  .doc-type{font-size:9px;font-weight:600;padding:1px 5px;border-radius:3px;flex-shrink:0;font-family:'DM Mono',monospace;}
+  .doc-type.pdf{background:#FAECE7;color:#993C1D;}
+  .doc-type.docx{background:var(--blue-light);color:var(--blue);}
+  .doc-type.xlsx{background:#EAF3DE;color:#3B6D11;}
+  .doc-nm{font-size:11px;color:var(--text);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .doc-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0;}
+  .doc-dot.on{background:var(--green);}
+  .doc-dot.pend{background:#BA7517;}
+
+  .lib-upload{margin:10px 10px;border:1px dashed var(--border2);border-radius:var(--radius-lg);padding:14px;text-align:center;cursor:pointer;transition:all .15s;}
+  .lib-upload:hover{border-color:var(--green);background:var(--green-light);}
+  .lu-title{font-size:12px;font-weight:500;color:var(--text2);}
+  .lib-upload:hover .lu-title{color:var(--green);}
+  .lu-sub{font-size:10px;color:var(--text3);margin-top:2px;}
+  .lu-fmts{display:flex;gap:4px;justify-content:center;margin-top:8px;}
+  .lu-fmt{padding:2px 7px;border-radius:20px;font-size:10px;background:var(--surface);color:var(--text2);border:1px solid var(--border);font-family:'DM Mono',monospace;}
+
+  /* MAIN */
+  .main{flex:1;display:flex;flex-direction:column;min-width:0;background:var(--surface);}
+
+  .convo-head{display:flex;align-items:center;gap:12px;padding:12px 22px;border-bottom:1px solid var(--border);flex-shrink:0;}
+  .ch-title{font-size:14px;font-weight:600;color:var(--text);}
+  .ch-sub{font-size:11px;color:var(--text3);}
+  .ch-right{margin-left:auto;display:flex;gap:6px;}
+  .hbtn{padding:6px 14px;border-radius:var(--radius);border:1px solid var(--border2);font-size:12px;color:var(--text2);cursor:pointer;display:flex;align-items:center;gap:6px;background:var(--surface);font-family:'DM Sans',sans-serif;font-weight:500;transition:all .15s;}
+  .hbtn:hover{border-color:var(--primary);color:var(--primary);background:var(--primary-light);}
+  .hbtn svg{width:13px;height:13px;}
+
+  .messages{flex:1;overflow-y:auto;padding:24px 28px;display:flex;flex-direction:column;gap:18px;}
+  .msg-row{display:flex;flex-direction:column;gap:6px;}
+  .msg-row.user{align-items:flex-end;}
+  .bubble{max-width:76%;padding:9px 13px;border-radius:14px;font-size:12px;line-height:1.6;}
+  .bubble.user{background:var(--primary-light);color:#0D4A4A;border-bottom-right-radius:4px;font-weight:500;}
+  .bubble.ai{background:var(--bg2);border:1px solid var(--border);border-bottom-left-radius:4px;color:var(--text);}
+
+  /* WELCOME CARD */
+  .welcome-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-xl);padding:22px 24px;max-width:84%;}
+  .wc-title{font-size:16px;font-weight:700;color:var(--navy);margin-bottom:4px;}
+  .wc-sub{font-size:12px;color:var(--text2);margin-bottom:16px;line-height:1.5;}
+  .wc-sub strong{font-weight:600;color:var(--text);}
+  .wc-options{display:flex;flex-direction:column;gap:8px;}
+  .wc-opt{display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:var(--radius-lg);border:1px solid var(--border);cursor:pointer;transition:all .15s;background:var(--surface);}
+  .wc-opt:hover{border-color:var(--primary);background:var(--primary-light);transform:translateX(3px);}
+  .wc-opt-icon{width:36px;height:36px;border-radius:var(--radius);display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+  .wc-opt-title{font-size:12px;font-weight:600;color:var(--text);}
+  .wc-opt-sub{font-size:11px;color:var(--text3);margin-top:1px;}
+
+  /* ANALYSIS SECTION DIVIDERS */
+  .analysis-divider{display:flex;align-items:center;gap:10px;margin:4px 0;}
+  .adiv-line{flex:1;height:0.5px;background:var(--border);}
+  .adiv-label{font-size:10px;font-weight:700;color:var(--primary);text-transform:uppercase;letter-spacing:.08em;background:var(--primary-light);padding:3px 10px;border-radius:20px;white-space:nowrap;}
+
+  /* THRESHOLD BANNER */
+  .threshold-banner{background:var(--navy-light);border:1px solid var(--border2);border-radius:var(--radius-lg);padding:12px 16px;max-width:84%;}
+  .tb-title{font-size:11px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;}
+  .tb-row{display:flex;align-items:center;gap:8px;margin-bottom:4px;font-size:12px;}
+  .tb-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+  .tb-label{font-weight:600;color:var(--text);flex-shrink:0;min-width:70px;}
+  .tb-desc{color:var(--text2);}
+  .tb-change{margin-top:10px;font-size:11px;color:var(--primary);cursor:pointer;font-weight:600;display:inline-flex;align-items:center;gap:4px;}
+
+  /* INTERSECTION GRID */
+  .intersection-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:7px;max-width:84%;}
+  .ix-cell{padding:12px;border-radius:var(--radius-lg);border:1px solid var(--border);background:var(--surface);text-align:center;}
+  .ix-cell.ix-hi{background:var(--red-light);border-color:#F5AAAA;}
+  .ix-cell.ix-med{background:var(--amber-light);border-color:var(--amber-mid);}
+  .ix-cell.ix-lo{background:var(--navy-light);border-color:var(--border2);}
+  .ix-n{font-size:20px;font-weight:700;color:var(--navy);}
+  .ix-cell.ix-hi .ix-n{color:var(--red);}
+  .ix-cell.ix-med .ix-n{color:var(--amber);}
+  .ix-pct{font-size:10px;font-weight:600;color:var(--text3);margin-top:1px;}
+  .ix-label{font-size:10px;color:var(--text2);margin-top:5px;line-height:1.35;}
+
+  /* SEL CHART */
+  .sel-chart{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:14px 16px;max-width:84%;}
+  .sel-legend{display:flex;gap:16px;margin-bottom:12px;}
+  .sel-leg-item{display:flex;align-items:center;gap:5px;font-size:11px;font-weight:600;color:var(--text2);}
+  .sel-leg-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;}
+  .sel-row{display:flex;align-items:center;gap:10px;margin-bottom:8px;}
+  .sel-lbl{width:130px;font-size:11px;color:var(--text2);flex-shrink:0;text-align:right;}
+  .sel-track{flex:1;height:18px;position:relative;}
+  .sel-bar{height:9px;border-radius:4px;position:absolute;top:4px;transition:width .3s;}
+  .sel-bar.ontrack{background:var(--primary);}
+  .sel-bar.atrisk{background:var(--red);opacity:.75;}
+
+  /* SCAFFOLD PROMPT */
+  .scaffold-prompt{background:var(--gold-light);border:1px solid var(--gold-mid);border-radius:var(--radius-lg);padding:12px 14px;max-width:84%;}
+  .sp-q{font-size:12px;font-weight:600;color:#7A5500;margin-bottom:8px;}
+
+  /* DASHBOARD GRID */
+  .dash-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;max-width:84%;}
+  .dash-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:14px 16px;}
+  .dash-n{font-size:28px;font-weight:700;line-height:1;margin-bottom:4px;}
+  .dash-label{font-size:12px;font-weight:600;color:var(--text2);margin-bottom:2px;}
+  .dash-pct{font-size:11px;color:var(--text3);}
+
+  /* GRADE CARDS */
+  .grade-cards-row{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;max-width:100%;}
+  .grade-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:12px;display:flex;flex-direction:column;gap:0;}
+  .grade-card-warn{border-color:var(--amber-mid);background:#FFFBF4;}
+  .grade-card-alert{border-color:#F5AAAA;background:var(--red-light);}
+  .gc-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:2px;}
+  .gc-title{font-size:15px;font-weight:700;color:var(--navy);}
+  .gc-badge{font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:var(--amber-light);color:var(--amber);border:1px solid var(--amber-mid);}
+  .gc-badge-red{background:var(--red-light);color:var(--red);border-color:#F5AAAA;}
+  .gc-meta{font-size:11px;color:var(--text3);margin-bottom:10px;}
+  .gc-meta strong{color:var(--text2);}
+  .gc-section-label{font-size:9px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px;}
+  .gc-tier-row{display:flex;align-items:center;gap:7px;margin-bottom:5px;}
+  .gc-tier-label{font-size:11px;font-weight:600;width:56px;flex-shrink:0;}
+  .gc-tier-bar-wrap{flex:1;height:8px;background:var(--bg2);border-radius:4px;overflow:hidden;}
+  .gc-tier-bar{height:100%;border-radius:4px;}
+  .gc-tier-pct{font-size:11px;color:var(--text2);font-family:'DM Mono',monospace;width:72px;text-align:right;flex-shrink:0;}
+  .gc-indicators{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px;}
+  .gc-ind{background:var(--bg2);border-radius:var(--radius);padding:8px 9px;}
+  .gc-ind-n{font-size:18px;font-weight:700;color:var(--navy);line-height:1;}
+  .gc-ind-label{font-size:10px;color:var(--text2);margin-top:2px;margin-bottom:1px;}
+  .gc-ind-pct{font-size:10px;color:var(--text3);}
+  .gc-delta{font-weight:600;font-size:9px;}
+  .gc-delta.bad{color:var(--red);}
+  .gc-delta.good{color:var(--green);}
+  .gc-all3{background:var(--navy-light);border-radius:var(--radius);padding:9px 10px;display:flex;align-items:center;gap:10px;margin-top:auto;}
+  .gc-all3-warn{background:var(--amber-light);}
+  .gc-all3-alert{background:var(--red-light);}
+  .gc-all3-n{font-size:22px;font-weight:700;color:var(--navy);flex-shrink:0;}
+  .gc-all3-detail{font-size:11px;font-weight:600;color:var(--navy);line-height:1.4;}
+  .gc-all3-detail span{font-size:10px;font-weight:400;color:var(--navy-mid);}
+
+  /* STUDENT TABLE */
+  .student-table-wrap{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:14px;max-width:100%;}
+  .st-filters{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px;}
+  .st-filter-label{font-size:12px;font-weight:600;color:var(--navy);}
+  .st-pills{display:flex;gap:5px;flex-wrap:wrap;}
+  .st-pill{padding:3px 10px;border-radius:20px;font-size:11px;border:1px solid var(--border2);color:var(--text2);cursor:pointer;font-weight:500;}
+  .st-pill.on{border-color:var(--primary-mid);background:var(--primary-light);color:var(--primary);}
+  .st-pill.active{border-color:#F5AAAA;background:var(--red-light);color:var(--red);}
+  .st-search{margin-left:auto;font-size:11px;color:var(--text3);padding:5px 12px;border:1px solid var(--border2);border-radius:var(--radius);background:var(--bg2);}
+  .st-grade-header{font-size:12px;font-weight:700;color:var(--navy);padding:8px 0 6px;border-top:1px solid var(--border);margin-top:4px;}
+  .st-grade-sub{font-size:11px;font-weight:400;color:var(--text3);margin-left:6px;}
+  .st-table-scroll{overflow-x:auto;}
+  .st-table{width:100%;border-collapse:collapse;font-size:12px;min-width:600px;}
+  .st-table thead th{text-align:left;font-size:10px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:.05em;padding:7px 8px;border-bottom:2px solid var(--navy);white-space:nowrap;}
+  .st-row{border-bottom:1px solid var(--border);}
+  .st-row:hover{background:var(--bg2);}
+  .st-row td{padding:8px 8px;vertical-align:middle;}
+  .st-row-crit{background:#FFF8F8;}
+  .st-row-more td{border-bottom:none;}
+  .st-id{font-family:'DM Mono',monospace;font-weight:600;color:var(--navy);font-size:12px;}
+  .st-abs-pct{font-weight:700;color:var(--red);}
+  .st-susp{font-weight:600;color:var(--amber);}
+  .st-tag{display:inline-block;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;background:var(--bg2);color:var(--text3);}
+  .st-tag.fail{background:var(--red-light);color:var(--red);}
+  .st-tag.pass{background:var(--green-light);color:var(--green);}
+  .st-tag.warn{background:var(--amber-light);color:var(--amber);}
+  .st-cov{display:inline-block;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;}
+  .cov-0{background:var(--red-light);color:var(--red);}
+  .cov-1{background:var(--amber-light);color:var(--amber);}
+  .cov-2{background:var(--green-light);color:var(--green);}
+
+  /* BRAINSTORM */
+  .brainstorm-grid{display:flex;flex-direction:column;gap:8px;max-width:84%;}
+  .bcard{padding:13px 15px;border-radius:var(--radius-lg);border:1px solid var(--border);background:var(--surface);}
+  .bcard-head{display:flex;align-items:center;gap:9px;margin-bottom:6px;}
+  .bcard-num{width:22px;height:22px;border-radius:50%;background:var(--navy);color:white;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+  .bcard-title{font-size:12px;font-weight:600;color:var(--navy);}
+  .bcard-body{font-size:12px;color:var(--text2);line-height:1.6;}
+  .bcard-evidence{font-size:11px;color:var(--primary);margin-top:6px;font-weight:600;display:flex;align-items:center;gap:4px;}
+
+  /* THINKING DOTS */
+  @keyframes dotpulse{0%,80%,100%{opacity:.2;transform:scale(.8)}40%{opacity:1;transform:scale(1)}}
+  .dot-pulse{width:6px;height:6px;border-radius:50%;background:var(--text3);display:inline-block;animation:dotpulse 1.2s ease-in-out infinite;}
+
+  .src-tag{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:5px;}
+  .st{display:inline-flex;align-items:center;gap:3px;padding:3px 8px;border-radius:20px;font-size:10px;font-weight:600;letter-spacing:.02em;}
+  .st.kb{background:var(--primary-light);color:var(--primary);}
+  .st.school{background:var(--green-light);color:var(--green);}
+  .st.ai{background:var(--bg3);color:var(--text2);}
+  .st.data{background:var(--navy-light);color:var(--navy);}
+
+  .ctx-pill{display:inline-flex;align-items:center;gap:6px;padding:4px 11px;border-radius:20px;background:var(--primary-light);border:1px solid var(--primary-mid);font-size:11px;color:var(--primary);margin-bottom:5px;font-weight:500;}
+  .ctx-dot{width:6px;height:6px;border-radius:50%;background:var(--primary);}
+
+  .risk-row{display:flex;gap:8px;max-width:76%;}
+  .rc{padding:12px 16px;border-radius:var(--radius-lg);flex:1;}
+  .rc.cr{background:var(--red-light);border:1px solid #F09595;}
+  .rc.hi{background:var(--amber-light);border:1px solid var(--amber-mid);}
+  .rc.mo{background:var(--blue-light);border:1px solid #B5D4F4;}
+  .rc.ok{background:#EAF3DE;border:1px solid #C0DD97;}
+  .rc-n{font-size:22px;font-weight:600;}
+  .rc.cr .rc-n{color:var(--red);} .rc.hi .rc-n{color:var(--amber);} .rc.mo .rc-n{color:var(--blue);} .rc.ok .rc-n{color:#27500A;}
+  .rc-l{font-size:11px;margin-top:3px;font-weight:500;}
+  .rc.cr .rc-l{color:#791F1F;} .rc.hi .rc-l{color:var(--amber);} .rc.mo .rc-l{color:var(--blue);} .rc.ok .rc-l{color:#3B6D11;}
+
+  .mini-chart{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-lg);padding:14px 16px;max-width:76%;}
+  .mc-title{font-size:12px;font-weight:600;color:var(--text);margin-bottom:10px;}
+  .br{display:flex;align-items:center;gap:8px;margin-bottom:6px;}
+  .bl{width:90px;font-size:11px;color:var(--text2);text-align:right;flex-shrink:0;line-height:1.3;}
+  .bt{flex:1;height:14px;background:var(--bg2);border-radius:3px;overflow:hidden;position:relative;}
+  .bf{height:100%;border-radius:3px;}
+  .bf span{display:none;}
+  .bv{font-size:10px;color:var(--text2);font-family:'DM Mono',monospace;white-space:nowrap;flex-shrink:0;min-width:80px;}
+  .mc-actions{display:flex;gap:6px;margin-top:10px;}
+  .mca{padding:4px 11px;border-radius:var(--radius);border:1px solid var(--border2);font-size:11px;color:var(--text2);cursor:pointer;background:var(--surface);font-family:'DM Sans',sans-serif;font-weight:500;}
+  .mca:hover{border-color:var(--purple);color:var(--purple);}
+
+  .ans{max-width:76%;font-size:12px;line-height:1.65;color:var(--text);padding:10px 14px;background:var(--bg2);border:1px solid var(--border);border-radius:14px;border-bottom-left-radius:4px;margin-top:6px;}
+  .ans strong{font-weight:600;}
+  .cites{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px;max-width:76%;}
+  .cite{display:flex;align-items:center;gap:4px;padding:3px 9px;border-radius:20px;border:1px solid var(--border2);font-size:11px;color:var(--text2);cursor:pointer;background:var(--surface);font-weight:500;}
+  .cite:hover{border-color:var(--primary);color:var(--primary);}
+
+  .scaffold-opts{display:flex;flex-wrap:wrap;gap:6px;max-width:76%;}
+  .sopt{padding:6px 13px;border-radius:20px;border:1px solid var(--border2);font-size:12px;cursor:pointer;color:var(--text2);background:var(--surface);font-weight:500;transition:all .15s;}
+  .sopt:hover{border-color:var(--primary);color:var(--primary);background:var(--primary-light);}
+  .sc-label{font-size:11px;color:var(--text3);margin-bottom:5px;font-weight:500;}
+
+  /* SOURCE BAR */
+  .source-bar{display:flex;align-items:center;gap:7px;padding:9px 22px;border-top:1px solid var(--border);background:var(--bg2);flex-shrink:0;}
+  .sb-label{font-size:12px;color:var(--text3);margin-right:3px;white-space:nowrap;font-weight:500;}
+  .src-pill{display:flex;align-items:center;gap:6px;padding:5px 13px;border-radius:20px;border:1px solid var(--border2);font-size:12px;color:var(--text2);cursor:pointer;white-space:nowrap;background:var(--surface);transition:all .15s;font-family:'DM Sans',sans-serif;font-weight:500;}
+  .src-pill svg{width:13px;height:13px;flex-shrink:0;}
+  .src-pill.on-purple{border-color:var(--primary-mid);background:var(--primary-light);color:var(--primary);}
+  .src-pill.on-green{border-color:var(--green-mid);background:var(--green-light);color:var(--green);}
+  .src-pill.on-gray{border-color:var(--navy-mid);background:var(--navy-light);color:var(--navy);}
+  .src-pill.off{opacity:.3;}
+  .src-pill .db-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+  .sb-divider{width:1px;height:18px;background:var(--border);flex-shrink:0;margin:0 2px;}
+  .sb-pending{display:flex;align-items:center;gap:6px;padding:5px 13px;border-radius:20px;border:1px solid var(--amber-mid);background:var(--amber-light);font-size:12px;color:var(--amber);cursor:pointer;white-space:nowrap;font-weight:500;}
+  .sb-pd{width:7px;height:7px;border-radius:50%;background:var(--amber);flex-shrink:0;}
+
+  .input-area{padding:12px 22px 16px;background:var(--surface);flex-shrink:0;}
+  .input-row{display:flex;align-items:flex-end;gap:9px;}
+  .input-row textarea{flex:1;resize:none;border:1px solid var(--border2);border-radius:var(--radius-lg);padding:10px 14px;font-size:13px;line-height:1.5;color:var(--text);background:var(--bg2);outline:none;font-family:'DM Sans',sans-serif;transition:border-color .15s;}
+  .input-row textarea:focus{border-color:var(--primary-mid);background:var(--surface);}
+  .input-row textarea::placeholder{color:var(--text3);}
+  .send-btn{width:38px;height:38px;border-radius:var(--radius-lg);background:var(--navy);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:background .15s;}
+  .send-btn:hover{background:var(--primary);}
+
+  /* RIGHT PANEL */
+  .right-panel{width:420px;min-width:420px;border-left:1px solid var(--border);display:flex;flex-direction:column;background:var(--surface);}
+  .rp-tabs{display:flex;border-bottom:1px solid var(--border);}
+  .rp-tab{flex:1;padding:11px 4px;text-align:center;font-size:12px;color:var(--text2);cursor:pointer;border-bottom:2px solid transparent;font-weight:500;transition:all .15s;}
+  .rp-tab.active{color:var(--primary);border-bottom-color:var(--primary);}
+  .rp-tab:hover{color:var(--text);}
+  .rp-body{flex:1;overflow-y:auto;padding:14px 14px;display:flex;flex-direction:column;gap:9px;}
+
+  .autofill-note{display:flex;align-items:flex-start;gap:7px;padding:9px 11px;background:var(--bg2);border-radius:var(--radius);border:1px solid var(--border);font-size:11px;color:var(--text2);line-height:1.5;font-weight:500;}
+
+  .pfield{display:flex;flex-direction:column;gap:4px;}
+  .pfield label{font-size:10px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;}
+  .pfield input,.pfield textarea{border:1px solid var(--border2);border-radius:var(--radius);padding:7px 11px;font-size:12px;background:var(--surface);color:var(--text);font-family:'DM Sans',sans-serif;outline:none;line-height:1.5;transition:border-color .15s;}
+  .pfield input:focus,.pfield textarea:focus{border-color:var(--primary-mid);}
+  .pfield textarea{resize:none;}
+  .pfield input::placeholder,.pfield textarea::placeholder{color:var(--text3);}
+
+  .psec{font-size:10px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;padding-top:4px;}
+  .arow{display:flex;align-items:flex-start;gap:7px;padding:8px 10px;border-radius:var(--radius);border:1px solid var(--border);background:var(--bg2);}
+  .awk{font-size:10px;font-weight:600;color:var(--primary);background:var(--primary-light);padding:2px 7px;border-radius:20px;flex-shrink:0;margin-top:1px;white-space:nowrap;font-family:'DM Mono',monospace;}
+  .atxt{font-size:12px;color:var(--text);line-height:1.5;}
+
+  .rp-footer{padding:11px 14px;border-top:1px solid var(--border);display:flex;gap:7px;}
+  .rp-footer button{flex:1;padding:9px;border-radius:var(--radius);font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:600;transition:all .15s;}
+  .btn-save{background:transparent;color:var(--gold);border:1.5px solid var(--gold);font-weight:600;}
+  .btn-save:hover{background:var(--gold);color:white;}
+  .btn-disc{background:var(--bg2);border:1px solid var(--border2);color:var(--text2);}
+  .btn-disc:hover{border-color:var(--border);color:var(--text);}
+
+  /* ACTION PLAN DOCUMENT STYLES */
+  .plan-doc-header{display:flex;align-items:flex-start;gap:10px;padding:14px 14px 12px;border-bottom:1px solid var(--border);background:var(--bg2);margin:-14px -14px 0;}
+  .plan-doc-icon{width:36px;height:36px;border-radius:var(--radius);background:var(--primary-light);border:1px solid var(--primary-mid);display:flex;align-items:center;justify-content:center;flex-shrink:0;color:var(--primary);}
+  .plan-doc-title{font-size:14px;font-weight:600;color:var(--text);outline:none;border:none;background:transparent;width:100%;padding:0;}
+  .plan-doc-title:focus{color:var(--primary);}
+  .plan-doc-meta{font-size:11px;color:var(--text3);margin-top:2px;}
+  .plan-autofill-badge{font-size:10px;font-weight:600;color:var(--green);background:var(--green-light);border:1px solid var(--green-mid);padding:2px 8px;border-radius:20px;white-space:nowrap;flex-shrink:0;margin-top:2px;}
+
+  .plan-section{display:flex;flex-direction:column;gap:7px;}
+  .plan-section-label{font-size:10px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;}
+  .plan-goal{font-size:13px;color:var(--text);line-height:1.6;padding:10px 12px;background:var(--bg2);border-radius:var(--radius);border:1px solid var(--border);outline:none;cursor:text;}
+  .plan-goal:focus{border-color:var(--primary-mid);background:var(--surface);}
+
+  .plan-chip{display:inline-flex;align-items:center;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:600;}
+  .plan-chip-red{background:var(--red-light);color:var(--red);border:1px solid #F09595;}
+  .plan-chip-amber{background:var(--amber-light);color:var(--amber);border:1px solid var(--amber-mid);}
+  .plan-chip-blue{background:var(--navy-light);color:var(--navy);border:1px solid #B5C4DC;}
+
+  .plan-week-header{display:flex;align-items:center;gap:10px;}
+  .plan-week-pill{display:inline-flex;padding:4px 12px;border-radius:20px;font-size:11px;font-weight:700;background:var(--primary-light);color:var(--primary);border:1px solid var(--primary-mid);letter-spacing:.02em;}
+  .plan-week-dates{font-size:11px;color:var(--text3);font-weight:500;}
+
+  .plan-actions-list{display:flex;flex-direction:column;gap:6px;}
+  .plan-action-item{display:flex;align-items:flex-start;gap:9px;padding:10px 12px;border-radius:var(--radius-lg);border:1px solid var(--border);background:var(--surface);transition:border-color .15s;}
+  .plan-action-item:hover{border-color:var(--border2);}
+  .plan-action-check{width:16px;height:16px;border-radius:4px;border:1.5px solid var(--border2);flex-shrink:0;margin-top:2px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;}
+  .plan-action-check:hover{border-color:var(--primary);background:var(--primary-light);}
+  .plan-action-body{flex:1;min-width:0;}
+  .plan-action-title{font-size:12px;font-weight:600;color:var(--text);margin-bottom:3px;}
+  .plan-action-detail{font-size:11px;color:var(--text2);line-height:1.5;}
+  .plan-action-owner{width:24px;height:24px;border-radius:50%;background:var(--navy-light);border:1px solid #B5C4DC;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:var(--navy);flex-shrink:0;margin-top:2px;}
+
+  .plan-notes{width:100%;resize:none;border:1px solid var(--border2);border-radius:var(--radius);padding:9px 12px;font-size:12px;background:var(--surface);color:var(--text);font-family:'DM Sans',sans-serif;outline:none;line-height:1.5;min-height:60px;}
+  .plan-notes:focus{border-color:var(--primary-mid);}
+  .plan-notes::placeholder{color:var(--text3);}
+
+  /* EDIT INTERACTION */
+  .plan-edit-btn{width:26px;height:26px;border-radius:var(--radius);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--text3);flex-shrink:0;opacity:0;transition:all .15s;background:var(--surface);}
+  .plan-action-item:hover .plan-edit-btn{opacity:1;}
+  .plan-edit-btn:hover{border-color:var(--purple-mid);color:var(--purple);background:var(--purple-light);}
+  .plan-action-item.editing{border-color:var(--purple-mid);background:var(--purple-light);}
+  .plan-action-item.editing .plan-edit-btn{opacity:1;border-color:var(--purple-mid);color:var(--purple);background:var(--purple-light);}
+  .plan-action-edit{display:flex;flex-direction:column;gap:6px;margin-top:8px;}
+  .edit-input{border:1px solid var(--purple-mid);border-radius:var(--radius);padding:6px 10px;font-size:12px;font-weight:600;color:var(--text);background:var(--surface);font-family:'DM Sans',sans-serif;outline:none;width:100%;}
+  .edit-input:focus{border-color:var(--purple);}
+  .edit-textarea{border:1px solid var(--purple-mid);border-radius:var(--radius);padding:6px 10px;font-size:11px;color:var(--text2);background:var(--surface);font-family:'DM Sans',sans-serif;outline:none;resize:none;width:100%;line-height:1.5;}
+  .edit-textarea:focus{border-color:var(--purple);}
+  .edit-done-btn{align-self:flex-end;padding:5px 14px;border-radius:var(--radius);background:var(--purple);color:white;border:none;font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;}
+  .edit-done-btn:hover{background:#3C3489;}
+
+  /* CHECKED state */
+  .plan-action-check.checked{background:var(--purple);border-color:var(--purple);}
+  .plan-action-check.checked::after{content:'';display:block;width:4px;height:7px;border:1.5px solid white;border-top:none;border-left:none;transform:rotate(45deg) translate(-1px,-1px);}
+  .plan-action-item.done .plan-action-title{text-decoration:line-through;color:var(--text3);}
+  .plan-action-item.done .plan-action-detail{color:var(--text3);}
+
+  /* AGENDA STYLES */
+  .agenda-item{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border-radius:var(--radius-lg);border:1px solid var(--border);background:var(--surface);transition:border-color .15s;}
+  .agenda-item:hover{border-color:var(--border2);}
+  .agenda-item:hover .plan-edit-btn{opacity:1;}
+  .agenda-time{font-size:11px;font-weight:700;color:var(--text3);font-family:'DM Mono',monospace;flex-shrink:0;margin-top:2px;width:32px;}
+  .agenda-body{flex:1;min-width:0;}
+  .agenda-title{font-size:12px;font-weight:600;color:var(--text);margin-bottom:3px;}
+  .agenda-detail{font-size:11px;color:var(--text2);line-height:1.5;}
+  .agenda-duration{font-size:11px;font-weight:600;color:var(--navy);background:var(--navy-light);padding:2px 7px;border-radius:20px;white-space:nowrap;flex-shrink:0;margin-top:2px;font-family:'DM Mono',monospace;}
+  .agenda-add-btn{display:flex;align-items:center;gap:7px;padding:9px 12px;border-radius:var(--radius-lg);border:1px dashed var(--border2);color:var(--text3);font-size:12px;cursor:pointer;font-weight:500;transition:all .15s;}
+  .agenda-add-btn:hover{border-color:var(--green);color:var(--green);background:var(--green-light);}
+  .prereading-item{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:var(--radius);border:1px solid var(--border);background:var(--bg2);font-size:12px;color:var(--text2);font-weight:500;}
+
+  /* GOOGLE DOC STYLE */
+  .doc-toolbar{display:flex;align-items:center;justify-content:space-between;padding:6px 14px;border-bottom:1px solid var(--border);background:var(--bg2);flex-shrink:0;}
+  .doc-toolbar-left{display:flex;align-items:center;gap:2px;}
+  .doc-tool-btn{width:28px;height:28px;border-radius:var(--radius);display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--text2);font-size:12px;transition:background .12s;}
+  .doc-tool-btn:hover{background:var(--bg3);color:var(--text);}
+  .doc-tool-sep{width:1px;height:18px;background:var(--border2);margin:0 4px;}
+  .doc-autosave{font-size:10px;color:var(--text3);font-weight:500;}
+
+  .doc-scroll{flex:1;overflow-y:auto;background:var(--bg2);padding:20px 16px;}
+  .doc-page{background:var(--surface);border-radius:var(--radius-lg);border:1px solid var(--border);padding:32px 36px;min-height:100%;box-shadow:0 1px 4px rgba(0,0,0,.04);}
+
+  .doc-meeting-title{font-size:22px;font-weight:700;color:var(--navy);line-height:1.3;margin-bottom:14px;outline:none;border:none;background:transparent;letter-spacing:-.3px;}
+  .doc-meeting-title:focus{outline:none;}
+  .doc-meeting-title:empty:before{content:'Untitled meeting';color:var(--text3);}
+
+  .doc-meta-row{display:flex;flex-wrap:wrap;gap:14px;margin-bottom:16px;}
+  .doc-meta-item{display:flex;align-items:center;gap:5px;font-size:12px;color:var(--text2);}
+  .doc-meta-item svg{flex-shrink:0;color:var(--text3);}
+  .doc-meta-item span{outline:none;min-width:20px;}
+  .doc-meta-item span:focus{border-bottom:1px solid var(--primary-mid);}
+
+  .doc-divider{height:1px;background:var(--border);margin:18px 0;}
+
+  .doc-section-head{font-size:11px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px;}
+
+  .doc-attendees{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:4px;}
+  .doc-attendee{display:inline-flex;align-items:center;padding:4px 10px;border-radius:20px;font-size:12px;font-weight:500;background:var(--navy-light);color:var(--navy);border:1px solid #B5C4DC;outline:none;min-width:10px;}
+  .doc-attendee:focus{border-color:var(--blue);}
+  .doc-attendee-add{display:inline-flex;align-items:center;padding:4px 10px;border-radius:20px;font-size:12px;color:var(--text3);border:1px dashed var(--border2);cursor:pointer;}
+  .doc-attendee-add:hover{border-color:var(--blue);color:var(--blue);}
+
+  .doc-para{font-size:13px;color:var(--text);line-height:1.7;outline:none;min-height:24px;}
+  .doc-para:focus{outline:none;}
+  .doc-notes-empty:empty:before{content:attr(data-placeholder);color:var(--text3);}
+
+  .doc-table{width:100%;border-collapse:collapse;font-size:12px;margin-bottom:4px;}
+  .doc-table thead th{text-align:left;font-size:10px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:.06em;padding:6px 8px;border-bottom:2px solid var(--navy);}
+  .doc-table tbody tr{border-bottom:1px solid var(--border);transition:background .1s;}
+  .doc-table tbody tr:hover{background:var(--bg2);}
+  .doc-table tbody tr:last-child{border-bottom:none;}
+  .doc-table tbody td{padding:10px 8px;vertical-align:top;}
+  .doc-td-time{font-size:11px;font-weight:700;color:var(--text3);font-family:'DM Mono',monospace;white-space:nowrap;outline:none;}
+  .doc-td-dur{font-size:11px;color:var(--primary);font-weight:600;white-space:nowrap;outline:none;font-family:'DM Mono',monospace;}
+  .doc-td-lead{font-size:12px;color:var(--text2);outline:none;font-weight:500;}
+  .doc-item-title{font-size:13px;font-weight:600;color:var(--text);outline:none;margin-bottom:3px;}
+  .doc-item-title:focus{outline:none;}
+  .doc-item-detail{font-size:11px;color:var(--text2);outline:none;line-height:1.5;}
+  .doc-item-detail:focus{outline:none;}
+
+  .doc-list{padding-left:18px;margin:0;}
+  .doc-list li{font-size:13px;color:var(--text);line-height:1.7;outline:none;margin-bottom:3px;}
+  .doc-list li:focus{outline:none;}
+
+  /* DOC TABLE CHECKBOX */
+  .doc-check{width:16px;height:16px;border-radius:4px;border:1.5px solid var(--border2);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;transition:all .15s;margin:auto;}
+  .doc-check:hover{border-color:var(--purple);}
+  .doc-check.checked{background:var(--primary);border-color:var(--primary);}
+  .doc-check.checked::after{content:'';display:block;width:4px;height:7px;border:1.5px solid white;border-top:none;border-left:none;transform:rotate(45deg) translate(-1px,-1px);}
+  .doc-table tbody tr.done td .doc-item-title,.doc-table tbody tr.done td .doc-item-detail,.doc-table tbody tr.done td.doc-td-lead{text-decoration:line-through;color:var(--text3);}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- MAIN NAV SIDEBAR -->
+  <div class="icon-nav">
+    <div class="logo-row">
+      <div class="logo"><span>e</span></div>
+      <div class="logo-name">ed<span>vise</span></div>
+    </div>
+
+    <div class="nav-section">Workspace</div>
+    <div class="ni active" id="nav-convo" onclick="showView('convo')">
+      <svg viewBox="0 0 20 20" fill="none"><rect x="2" y="3" width="16" height="11" rx="2" stroke="currentColor" stroke-width="1.3"/><path d="M6 7h8M6 10h5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+      <span class="ni-label">Conversation</span>
+    </div>
+
+    <div class="nav-divider"></div>
+    <div class="nav-section">My library</div>
+    <div class="ni" id="nav-lib" onclick="showView('library')">
+      <svg viewBox="0 0 20 20" fill="none"><path d="M1 4h12v8a1 1 0 01-1 1H2a1 1 0 01-1-1V4z" stroke="currentColor" stroke-width="1.3"/><path d="M1 4l2-2h4l1 2" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>
+      <span class="ni-label">All documents</span>
+    </div>
+    <div class="ni" onclick="showView('library')">
+      <svg viewBox="0 0 20 20" fill="none"><path d="M1 4h12v8a1 1 0 01-1 1H2a1 1 0 01-1-1V4z" stroke="currentColor" stroke-width="1.3"/><path d="M1 4l2-2h4l1 2" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>
+      <span class="ni-label">Strategy & plans</span>
+    </div>
+    <div class="ni" onclick="showView('library')">
+      <svg viewBox="0 0 20 20" fill="none"><path d="M1 4h12v8a1 1 0 01-1 1H2a1 1 0 01-1-1V4z" stroke="currentColor" stroke-width="1.3"/><path d="M1 4l2-2h4l1 2" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>
+      <span class="ni-label">Policies</span>
+    </div>
+    <div class="ni" onclick="showView('library')">
+      <svg viewBox="0 0 20 20" fill="none"><path d="M1 4h12v8a1 1 0 01-1 1H2a1 1 0 01-1-1V4z" stroke="currentColor" stroke-width="1.3"/><path d="M1 4l2-2h4l1 2" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>
+      <span class="ni-label">Reports & data</span>
+    </div>
+    <div class="ni" style="color:var(--amber);" onclick="showView('library')">
+      <svg viewBox="0 0 20 20" fill="none"><path d="M1 4h12v8a1 1 0 01-1 1H2a1 1 0 01-1-1V4z" stroke="currentColor" stroke-width="1.3"/><path d="M1 4l2-2h4l1 2" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>
+      <span class="ni-label">Pending approval</span>
+      <span class="ni-badge">1</span>
+    </div>
+
+    <div class="nav-divider"></div>
+    <div class="nav-section">My actions</div>
+    <div class="ni">
+      <svg viewBox="0 0 20 20" fill="none"><rect x="3" y="3" width="14" height="14" rx="2" stroke="currentColor" stroke-width="1.3"/><path d="M7 10l2.5 2.5L13 7" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span class="ni-label">Action plans</span>
+      <span class="ni-badge">2</span>
+    </div>
+    <div class="ni">
+      <svg viewBox="0 0 20 20" fill="none"><rect x="3" y="3" width="14" height="14" rx="2" stroke="currentColor" stroke-width="1.3"/><path d="M5 7h10M5 10h7" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+      <span class="ni-label">Meeting agendas</span>
+    </div>
+    <div class="ni">
+      <svg viewBox="0 0 20 20" fill="none"><path d="M5 2h8l5 5v11a1 1 0 01-1 1H5a1 1 0 01-1-1V3a1 1 0 011-1z" stroke="currentColor" stroke-width="1.3"/><path d="M13 2v5h5" stroke="currentColor" stroke-width="1.3"/></svg>
+      <span class="ni-label">Reports</span>
+    </div>
+
+    <div class="sp"></div>
+    <div class="nav-divider"></div>
+    <div class="ni">
+      <svg viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="3" stroke="currentColor" stroke-width="1.3"/><path d="M10 3v1.5M10 15.5V17M3 10h1.5M15.5 10H17M5.4 5.4l1.06 1.06M13.54 13.54l1.06 1.06M5.4 14.6l1.06-1.06M13.54 6.46l1.06-1.06" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+      <span class="ni-label">Settings</span>
+    </div>
+  </div>
+
+  <!-- CONVERSATION VIEW -->
+  <div id="view-convo" style="display:flex;flex:1;min-width:0;">
+  <!-- MAIN CHAT -->
+  <div class="main">
+    <div class="convo-head">
+      <div>
+        <div class="ch-title">Riverdale High · Term 2 2026</div>
+        <div class="ch-sub">Grades 6–9 · 847 students</div>
+      </div>
+    </div>
+
+    <div class="messages" id="msg-container">
+
+      <!-- ── OPENING: what would you like to do? ── -->
+      <div class="msg-row">
+        <div class="welcome-card">
+          <div class="wc-title">Good morning, Ms. Lee 👋</div>
+          <div class="wc-sub">What would you like to do today with your <strong>Riverdale High · Grades 6–9</strong> data?</div>
+          <div class="wc-options">
+            <div class="wc-opt" onclick="runDemo('analysis')">
+              <div class="wc-opt-icon" style="background:var(--navy-light);color:var(--navy);">
+                <svg width="16" height="16" viewBox="0 0 20 20" fill="none"><path d="M3 15V10M7 15V7M11 15V9M15 15V5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+              </div>
+              <div><div class="wc-opt-title">Run foundational analysis</div><div class="wc-opt-sub">Variable matching, criteria, overview & grade breakdown</div></div>
+            </div>
+            <div class="wc-opt" onclick="runDemo('question')">
+              <div class="wc-opt-icon" style="background:var(--primary-light);color:var(--primary);">
+                <svg width="16" height="16" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="8" stroke="currentColor" stroke-width="1.4"/><path d="M10 10.5v-.5a2.5 2.5 0 10-2.5-2.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><circle cx="10" cy="14" r="1" fill="currentColor"/></svg>
+              </div>
+              <div><div class="wc-opt-title">I have my own questions</div><div class="wc-opt-sub">Ask anything about your students</div></div>
+            </div>
+            <div class="wc-opt" onclick="runDemo('brainstorm')">
+              <div class="wc-opt-icon" style="background:var(--gold-light);color:var(--gold);">
+                <svg width="16" height="16" viewBox="0 0 20 20" fill="none"><path d="M10 2a6 6 0 016 6c0 2.5-1.5 4.6-3.5 5.6V15H7.5v-1.4C5.5 12.6 4 10.5 4 8a6 6 0 016-6z" stroke="currentColor" stroke-width="1.4"/><path d="M7.5 17.5h5M8.5 19.5h3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+              </div>
+              <div><div class="wc-opt-title">Brainstorm interventions</div><div class="wc-opt-sub">Research-backed strategies for students</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── HIDDEN DEMO CONTENT (shown when options clicked) ── -->
+      <div id="demo-content" style="display:none;flex-direction:column;gap:18px;"></div>
+
+    </div>
+
+    <!-- SOURCE BAR -->
+    <div class="source-bar">
+      <span class="sb-label">Searching</span>
+      <div class="src-pill on-purple">
+        <div class="db-dot" style="background:var(--primary);"></div>
+        Student success KB
+        <svg width="10" height="10" viewBox="0 0 10 10" fill="none" style="opacity:.4;"><path d="M2 4l3 3 3-3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <div class="src-pill on-green">
+        <svg viewBox="0 0 12 12" fill="none"><path d="M2 1h6l3 3v7a1 1 0 01-1 1H2a1 1 0 01-1-1V2a1 1 0 011-1z" stroke="currentColor" stroke-width="1"/><path d="M4 5h5M4 8h3" stroke="currentColor" stroke-width="1" stroke-linecap="round"/></svg>
+        School-based
+      </div>
+      <div class="src-pill on-gray">
+        <svg viewBox="0 0 12 12" fill="none"><circle cx="6" cy="6" r="4.5" stroke="currentColor" stroke-width="1"/><path d="M6 4v2.5l1.5 1" stroke="currentColor" stroke-width="1" stroke-linecap="round"/></svg>
+        General knowledge
+      </div>
+      <div class="src-pill off">
+        <svg viewBox="0 0 12 12" fill="none"><circle cx="6" cy="6" r="4.5" stroke="currentColor" stroke-width="1"/><ellipse cx="6" cy="6" rx="2" ry="4.5" stroke="currentColor" stroke-width="1"/><path d="M1.5 6h9" stroke="currentColor" stroke-width="1" stroke-linecap="round"/></svg>
+        Web search
+      </div>
+      <div class="sb-divider"></div>
+      <div class="sb-pending">
+        <div class="sb-pd"></div>
+        1 doc pending approval
+      </div>
+    </div>
+
+    <div class="input-area">
+      <div class="input-row">
+        <textarea rows="1" placeholder="Ask about your students, explore research, or create an artifact…"></textarea>
+        <button class="send-btn">
+          <svg width="15" height="15" viewBox="0 0 14 14" fill="none"><path d="M2 7h10M8 3l4 4-4 4" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT PANEL -->
+  <div class="right-panel">
+    <div class="rp-tabs">
+      <div class="rp-tab active" id="tab-plan" onclick="switchTab('plan')">Action plan</div>
+      <div class="rp-tab" id="tab-agenda" onclick="switchTab('agenda')">Agenda</div>
+      <div class="rp-tab" id="tab-report" onclick="switchTab('report')">Report</div>
+    </div>
+
+    <!-- ACTION PLAN PANEL -->
+    <div id="panel-plan" style="display:flex;flex-direction:column;flex:1;overflow:hidden;">
+
+      <!-- Toolbar -->
+      <div class="doc-toolbar">
+        <div class="doc-toolbar-left">
+          <div class="doc-tool-btn"><svg width="13" height="13" viewBox="0 0 14 14" fill="none"><path d="M4 7h4a2 2 0 000-4H4v4zm0 0h4.5a2 2 0 010 4H4V7z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg></div>
+          <div class="doc-tool-btn" style="font-style:italic;font-size:12px;font-weight:600;">I</div>
+          <div class="doc-tool-sep"></div>
+          <div class="doc-tool-btn"><svg width="13" height="13" viewBox="0 0 14 14" fill="none"><circle cx="2" cy="4" r="1" fill="currentColor"/><circle cx="2" cy="8" r="1" fill="currentColor"/><circle cx="2" cy="12" r="1" fill="currentColor"/><path d="M5 4h7M5 8h7M5 12h7" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg></div>
+          <div class="doc-tool-btn"><svg width="13" height="13" viewBox="0 0 14 14" fill="none"><rect x="1" y="1" width="12" height="12" rx="1" stroke="currentColor" stroke-width="1"/><path d="M1 5h12M1 9h12M5 1v12" stroke="currentColor" stroke-width="1"/></svg></div>
+          <div class="doc-tool-sep"></div>
+          <div class="doc-tool-btn"><svg width="13" height="13" viewBox="0 0 14 14" fill="none"><path d="M7 2v7M4 6l3 3 3-3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M2 11h10" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg></div>
+        </div>
+        <div class="doc-autosave">Auto-filled · edit freely</div>
+      </div>
+
+      <!-- Doc scroll area -->
+      <div class="doc-scroll">
+        <div class="doc-page">
+
+          <!-- Title -->
+          <div class="doc-meeting-title" contenteditable="true" spellcheck="false">2-week intervention plan</div>
+
+          <!-- Meta -->
+          <div class="doc-meta-row">
+            <div class="doc-meta-item">
+              <svg width="12" height="12" viewBox="0 0 14 14" fill="none"><rect x="1" y="2" width="12" height="11" rx="1.5" stroke="currentColor" stroke-width="1"/><path d="M1 6h12M5 1v2M9 1v2" stroke="currentColor" stroke-width="1" stroke-linecap="round"/></svg>
+              <span contenteditable="true">7 Apr – 18 Apr 2026</span>
+            </div>
+            <div class="doc-meta-item">
+              <svg width="12" height="12" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="8" r="4" stroke="currentColor" stroke-width="1"/><path d="M5 1h4M7 1v3" stroke="currentColor" stroke-width="1" stroke-linecap="round"/></svg>
+              <span contenteditable="true">Grade 9 · Riverdale High · Term 2 2026</span>
+            </div>
+          </div>
+
+          <div class="doc-divider"></div>
+
+          <!-- Goal -->
+          <div class="doc-section-head">Goal</div>
+          <p class="doc-para" contenteditable="true" spellcheck="false">Reduce chronic absenteeism by 15% and improve course engagement for the 18 critical-risk students within 2 weeks, using relational and barrier-focused strategies.</p>
+
+          <div class="doc-divider"></div>
+
+          <!-- Focus group -->
+          <div class="doc-section-head">Focus group</div>
+          <div class="doc-attendees" style="margin-bottom:4px;">
+            <span class="doc-attendee" style="background:var(--red-light);color:var(--red);border-color:#F09595;" contenteditable="true">18 critical risk</span>
+            <span class="doc-attendee" style="background:var(--amber-light);color:var(--amber);border-color:var(--amber-mid);" contenteditable="true">42 chronically absent</span>
+            <span class="doc-attendee" contenteditable="true">Grade 9 · Term 2</span>
+          </div>
+
+          <div class="doc-divider"></div>
+
+          <!-- Week 1 -->
+          <div class="doc-section-head" style="display:flex;align-items:center;gap:10px;">
+            <span>Week 1</span>
+            <span style="font-size:10px;font-weight:500;color:var(--text3);text-transform:none;letter-spacing:0;">7 Apr – 11 Apr 2026</span>
+          </div>
+
+          <table class="doc-table">
+            <thead>
+              <tr>
+                <th>Action</th>
+                <th style="width:130px;">Detail</th>
+                <th style="width:60px;">Owner</th>
+                <th style="width:50px;">Done</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr id="row-a1" class="">
+                <td><div class="doc-item-title" contenteditable="true">Assign trusted adult contacts</div></td>
+                <td><div class="doc-item-detail" contenteditable="true">One consistent adult per student. See Wellbeing Framework p.7.</div></td>
+                <td class="doc-td-lead" contenteditable="true">J. Lee</td>
+                <td style="text-align:center;"><div class="doc-check" onclick="toggleDocCheck('row-a1',this)"></div></td>
+              </tr>
+              <tr id="row-a2">
+                <td><div class="doc-item-title" contenteditable="true">Personalised family outreach calls</div></td>
+                <td><div class="doc-item-detail" contenteditable="true">Reference each student's specific attendance pattern.</div></td>
+                <td class="doc-td-lead" contenteditable="true">S. Rao</td>
+                <td style="text-align:center;"><div class="doc-check" onclick="toggleDocCheck('row-a2',this)"></div></td>
+              </tr>
+              <tr id="row-a3">
+                <td><div class="doc-item-title" contenteditable="true">Identify barrier type per student</div></td>
+                <td><div class="doc-item-detail" contenteditable="true">Transport, mental health, or financial pressure — record in student file.</div></td>
+                <td class="doc-td-lead" contenteditable="true">J. Lee</td>
+                <td style="text-align:center;"><div class="doc-check" onclick="toggleDocCheck('row-a3',this)"></div></td>
+              </tr>
+            </tbody>
+          </table>
+
+          <div class="doc-divider"></div>
+
+          <!-- Week 2 -->
+          <div class="doc-section-head" style="display:flex;align-items:center;gap:10px;">
+            <span>Week 2</span>
+            <span style="font-size:10px;font-weight:500;color:var(--text3);text-transform:none;letter-spacing:0;">14 Apr – 18 Apr 2026</span>
+          </div>
+
+          <table class="doc-table">
+            <thead>
+              <tr>
+                <th>Action</th>
+                <th style="width:130px;">Detail</th>
+                <th style="width:60px;">Owner</th>
+                <th style="width:50px;">Done</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr id="row-b1">
+                <td><div class="doc-item-title" contenteditable="true">Review attendance data</div></td>
+                <td><div class="doc-item-detail" contenteditable="true">Flag students missing 2+ additional days since Week 1.</div></td>
+                <td class="doc-td-lead" contenteditable="true">J. Lee</td>
+                <td style="text-align:center;"><div class="doc-check" onclick="toggleDocCheck('row-b1',this)"></div></td>
+              </tr>
+              <tr id="row-b2">
+                <td><div class="doc-item-title" contenteditable="true">Team debrief and strategy adjustment</div></td>
+                <td><div class="doc-item-detail" contenteditable="true">Share early outcomes, adjust per student where needed.</div></td>
+                <td class="doc-td-lead" contenteditable="true">M. Kim</td>
+                <td style="text-align:center;"><div class="doc-check" onclick="toggleDocCheck('row-b2',this)"></div></td>
+              </tr>
+              <tr id="row-b3">
+                <td><div class="doc-item-title" contenteditable="true">Counsellor referrals</div></td>
+                <td><div class="doc-item-detail" contenteditable="true">Connect students where mental health was identified as the barrier.</div></td>
+                <td class="doc-td-lead" contenteditable="true">S. Rao</td>
+                <td style="text-align:center;"><div class="doc-check" onclick="toggleDocCheck('row-b3',this)"></div></td>
+              </tr>
+            </tbody>
+          </table>
+
+          <div class="doc-divider"></div>
+
+          <!-- Notes -->
+          <div class="doc-section-head">Notes</div>
+          <p class="doc-para doc-notes-empty" contenteditable="true" spellcheck="false" data-placeholder="Click to add notes…"></p>
+
+        </div>
+      </div>
+
+      <div class="rp-footer">
+        <button class="btn-disc">Discard</button>
+        <button class="btn-save">Save to My actions</button>
+      </div>
+    </div><!-- end panel-plan -->
+
+    <!-- AGENDA PANEL -->
+    <div id="panel-agenda" style="display:none;flex-direction:column;flex:1;overflow:hidden;">
+
+      <!-- Doc toolbar -->
+      <div class="doc-toolbar">
+        <div class="doc-toolbar-left">
+          <div class="doc-tool-btn" title="Bold"><svg width="13" height="13" viewBox="0 0 14 14" fill="none"><path d="M4 7h4a2 2 0 000-4H4v4zm0 0h4.5a2 2 0 010 4H4V7z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg></div>
+          <div class="doc-tool-btn" title="Italic" style="font-style:italic;font-size:12px;font-weight:600;">I</div>
+          <div class="doc-tool-sep"></div>
+          <div class="doc-tool-btn" title="Bullet list"><svg width="13" height="13" viewBox="0 0 14 14" fill="none"><circle cx="2" cy="4" r="1" fill="currentColor"/><circle cx="2" cy="8" r="1" fill="currentColor"/><circle cx="2" cy="12" r="1" fill="currentColor"/><path d="M5 4h7M5 8h7M5 12h7" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg></div>
+          <div class="doc-tool-btn" title="Insert table"><svg width="13" height="13" viewBox="0 0 14 14" fill="none"><rect x="1" y="1" width="12" height="12" rx="1" stroke="currentColor" stroke-width="1"/><path d="M1 5h12M1 9h12M5 1v12" stroke="currentColor" stroke-width="1"/></svg></div>
+          <div class="doc-tool-sep"></div>
+          <div class="doc-tool-btn" title="Download">
+            <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><path d="M7 2v7M4 6l3 3 3-3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M2 11h10" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+          </div>
+        </div>
+        <div class="doc-autosave">Auto-filled · edit freely</div>
+      </div>
+
+      <!-- Doc page -->
+      <div class="doc-scroll">
+        <div class="doc-page">
+
+          <!-- Meeting title -->
+          <div class="doc-meeting-title" contenteditable="true" spellcheck="false">Student support team meeting</div>
+
+          <!-- Meta row -->
+          <div class="doc-meta-row">
+            <div class="doc-meta-item">
+              <svg width="12" height="12" viewBox="0 0 14 14" fill="none"><rect x="1" y="2" width="12" height="11" rx="1.5" stroke="currentColor" stroke-width="1"/><path d="M1 6h12M5 1v2M9 1v2" stroke="currentColor" stroke-width="1" stroke-linecap="round"/></svg>
+              <span contenteditable="true">Thursday 10 April 2026</span>
+            </div>
+            <div class="doc-meta-item">
+              <svg width="12" height="12" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5" stroke="currentColor" stroke-width="1"/><path d="M7 4v3.5l2 1" stroke="currentColor" stroke-width="1" stroke-linecap="round"/></svg>
+              <span contenteditable="true">9:00 – 10:00 am</span>
+            </div>
+            <div class="doc-meta-item">
+              <svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M7 1C4.8 1 3 2.8 3 5c0 3 4 8 4 8s4-5 4-8c0-2.2-1.8-4-4-4z" stroke="currentColor" stroke-width="1"/><circle cx="7" cy="5" r="1.5" stroke="currentColor" stroke-width="1"/></svg>
+              <span contenteditable="true">Room 204</span>
+            </div>
+          </div>
+
+          <div class="doc-divider"></div>
+
+          <!-- Attendees -->
+          <div class="doc-section-head">Attendees</div>
+          <div class="doc-attendees">
+            <span class="doc-attendee" contenteditable="true">J. Lee</span>
+            <span class="doc-attendee" contenteditable="true">S. Rao</span>
+            <span class="doc-attendee" contenteditable="true">M. Kim</span>
+            <span class="doc-attendee-add">+ add</span>
+          </div>
+
+          <div class="doc-divider"></div>
+
+          <!-- Purpose -->
+          <div class="doc-section-head">Purpose</div>
+          <p class="doc-para" contenteditable="true" spellcheck="false">Review Grade 9 risk analysis findings and align on intervention strategies for the 18 critical-risk students before implementing the 2-week action plan.</p>
+
+          <div class="doc-divider"></div>
+
+          <!-- Agenda -->
+          <div class="doc-section-head">Agenda</div>
+
+          <table class="doc-table">
+            <thead>
+              <tr>
+                <th style="width:48px;">Time</th>
+                <th>Item</th>
+                <th style="width:56px;">Duration</th>
+                <th style="width:80px;">Lead</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="doc-td-time">9:00</td>
+                <td>
+                  <div class="doc-item-title" contenteditable="true">Welcome & context</div>
+                  <div class="doc-item-detail" contenteditable="true">Brief overview of today's risk analysis — 247 students, 18 critical risk.</div>
+                </td>
+                <td class="doc-td-dur" contenteditable="true">5 min</td>
+                <td class="doc-td-lead" contenteditable="true">J. Lee</td>
+              </tr>
+              <tr>
+                <td class="doc-td-time">9:05</td>
+                <td>
+                  <div class="doc-item-title" contenteditable="true">Risk analysis walkthrough</div>
+                  <div class="doc-item-detail" contenteditable="true">Share the four risk categories, flag breakdown, and intersection patterns.</div>
+                </td>
+                <td class="doc-td-dur" contenteditable="true">15 min</td>
+                <td class="doc-td-lead" contenteditable="true">J. Lee</td>
+              </tr>
+              <tr>
+                <td class="doc-td-time">9:20</td>
+                <td>
+                  <div class="doc-item-title" contenteditable="true">Research findings</div>
+                  <div class="doc-item-detail" contenteditable="true">Present KB evidence on trusted adult assignment, barrier identification, and family outreach.</div>
+                </td>
+                <td class="doc-td-dur" contenteditable="true">10 min</td>
+                <td class="doc-td-lead" contenteditable="true">S. Rao</td>
+              </tr>
+              <tr>
+                <td class="doc-td-time">9:30</td>
+                <td>
+                  <div class="doc-item-title" contenteditable="true">2-week action plan review</div>
+                  <div class="doc-item-detail" contenteditable="true">Walk through the draft plan — assign owners, confirm timelines, identify blockers.</div>
+                </td>
+                <td class="doc-td-dur" contenteditable="true">20 min</td>
+                <td class="doc-td-lead" contenteditable="true">M. Kim</td>
+              </tr>
+              <tr>
+                <td class="doc-td-time">9:50</td>
+                <td>
+                  <div class="doc-item-title" contenteditable="true">Next steps & close</div>
+                  <div class="doc-item-detail" contenteditable="true">Confirm responsibilities, set check-in date for Week 2 debrief.</div>
+                </td>
+                <td class="doc-td-dur" contenteditable="true">10 min</td>
+                <td class="doc-td-lead" contenteditable="true">All</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <div class="doc-divider"></div>
+
+          <!-- Pre-reading -->
+          <div class="doc-section-head">Pre-reading</div>
+          <ul class="doc-list">
+            <li contenteditable="true">Grade 9 risk analysis summary (today's session)</li>
+            <li contenteditable="true">Riverdale Wellbeing Framework pp. 7–12</li>
+            <li contenteditable="true">Attendance Works — Chronic Absenteeism Guide 2023</li>
+          </ul>
+
+          <div class="doc-divider"></div>
+
+          <!-- Notes -->
+          <div class="doc-section-head">Notes</div>
+          <p class="doc-para doc-notes-empty" contenteditable="true" spellcheck="false" data-placeholder="Click to add meeting notes…"></p>
+
+        </div>
+      </div>
+
+      <div class="rp-footer">
+        <button class="btn-disc">Discard</button>
+        <button class="btn-save">Save to My actions</button>
+      </div>
+    </div><!-- end panel-agenda -->
+
+    <!-- REPORT PANEL -->
+    <div id="panel-report" style="display:none;flex-direction:column;flex:1;overflow:hidden;">
+      <div class="rp-body" style="align-items:center;justify-content:center;text-align:center;padding:40px 24px;">
+        <div style="width:48px;height:48px;border-radius:var(--radius-lg);background:var(--bg2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;margin:0 auto 14px;">
+          <svg width="22" height="22" viewBox="0 0 20 20" fill="none"><path d="M5 2h8l5 5v11a1 1 0 01-1 1H5a1 1 0 01-1-1V3a1 1 0 011-1z" stroke="var(--text3)" stroke-width="1.3"/><path d="M13 2v5h5" stroke="var(--text3)" stroke-width="1.3"/><path d="M7 9h6M7 12h4" stroke="var(--text3)" stroke-width="1.3" stroke-linecap="round"/></svg>
+        </div>
+        <div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:6px;">Generate a report</div>
+        <div style="font-size:12px;color:var(--text2);line-height:1.6;margin-bottom:20px;max-width:220px;">Edvise will summarise today's analysis, research findings, and action plan into a shareable report.</div>
+        <button style="padding:9px 22px;border-radius:var(--radius);background:var(--purple);color:white;border:none;font-size:13px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;">Generate report</button>
+      </div>
+    </div><!-- end panel-report -->
+
+  </div><!-- end right-panel -->
+  </div><!-- end view-convo -->
+  <div class="view" id="view-library" style="display:none;flex:1;">
+    <div class="lib-page" style="display:flex;flex:1;overflow:hidden;">
+
+      <div class="lib-page-left" style="width:220px;min-width:220px;border-right:1px solid var(--border);display:flex;flex-direction:column;background:var(--bg2);">
+        <div class="lib-page-left-head" style="padding:16px 14px 12px;border-bottom:1px solid var(--border);">
+          <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:10px;">My library</div>
+          <div class="lib-search2">
+            <svg viewBox="0 0 14 14" fill="none"><circle cx="6" cy="6" r="4" stroke="currentColor" stroke-width="1"/><path d="M9 9l3 3" stroke="currentColor" stroke-width="1" stroke-linecap="round"/></svg>
+            <input placeholder="Search documents…">
+          </div>
+        </div>
+        <div style="flex:1;overflow-y:auto;padding:8px 10px;">
+          <div style="font-size:10px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;padding:10px 4px 5px;">Folders</div>
+          <div class="lib-folder sel"><div class="lib-folder-icon" style="background:#E1F5EE;"><svg viewBox="0 0 14 14" fill="none"><path d="M1 4h12v8a1 1 0 01-1 1H2a1 1 0 01-1-1V4z" stroke="#0F6E56" stroke-width="1"/><path d="M1 4l2-2h4l1 2" stroke="#0F6E56" stroke-width="1"/></svg></div><span class="lib-folder-name">All documents</span><span style="font-size:10px;color:var(--text3);margin-left:auto;">9</span></div>
+          <div class="lib-folder"><div class="lib-folder-icon" style="background:#E6F1FB;"><svg viewBox="0 0 14 14" fill="none"><path d="M1 4h12v8a1 1 0 01-1 1H2a1 1 0 01-1-1V4z" stroke="#185FA5" stroke-width="1"/><path d="M1 4l2-2h4l1 2" stroke="#185FA5" stroke-width="1"/></svg></div><span class="lib-folder-name">Strategy & plans</span><span style="font-size:10px;color:var(--text3);margin-left:auto;">3</span></div>
+          <div class="lib-folder"><div class="lib-folder-icon" style="background:#FAECE7;"><svg viewBox="0 0 14 14" fill="none"><path d="M1 4h12v8a1 1 0 01-1 1H2a1 1 0 01-1-1V4z" stroke="#993C1D" stroke-width="1"/><path d="M1 4l2-2h4l1 2" stroke="#993C1D" stroke-width="1"/></svg></div><span class="lib-folder-name">Policies</span><span style="font-size:10px;color:var(--text3);margin-left:auto;">2</span></div>
+          <div class="lib-folder"><div class="lib-folder-icon" style="background:#EAF3DE;"><svg viewBox="0 0 14 14" fill="none"><path d="M1 4h12v8a1 1 0 01-1 1H2a1 1 0 01-1-1V4z" stroke="#3B6D11" stroke-width="1"/><path d="M1 4l2-2h4l1 2" stroke="#3B6D11" stroke-width="1"/></svg></div><span class="lib-folder-name">Reports & data</span><span style="font-size:10px;color:var(--text3);margin-left:auto;">3</span></div>
+          <div class="lib-folder"><div class="lib-folder-icon" style="background:#FAEEDA;"><svg viewBox="0 0 14 14" fill="none"><path d="M1 4h12v8a1 1 0 01-1 1H2a1 1 0 01-1-1V4z" stroke="#854F0B" stroke-width="1"/><path d="M1 4l2-2h4l1 2" stroke="#854F0B" stroke-width="1"/></svg></div><span class="lib-folder-name" style="color:var(--amber);">Pending approval</span><span class="lib-folder-badge" style="margin-left:auto;">1</span></div>
+        </div>
+        <div class="lib-upload-zone">
+          <svg width="18" height="18" viewBox="0 0 18 18" fill="none" style="margin:0 auto 6px;display:block;opacity:.35;"><path d="M9 2v10M5 6l4-4 4 4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><path d="M2 15h14" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+          <div class="lib-upload-title">Upload a document</div>
+          <div class="lib-upload-sub">or connect Google Drive</div>
+          <div class="lib-fmts"><span class="lib-fmt">PDF</span><span class="lib-fmt">DOCX</span><span class="lib-fmt">XLSX</span><span class="lib-fmt">CSV</span></div>
+        </div>
+      </div>
+
+      <div class="lib-page-right">
+        <div class="lib-page-head">
+          <div class="lib-page-head-top">
+            <div class="lib-school-info">
+              <div class="lib-school-av"><svg viewBox="0 0 20 20" fill="none"><path d="M10 2L2 7v1h16V7L10 2z" stroke="#0F6E56" stroke-width="1.3" stroke-linejoin="round"/><rect x="4" y="8" width="3" height="5" stroke="#0F6E56" stroke-width="1.3"/><rect x="8.5" y="8" width="3" height="5" stroke="#0F6E56" stroke-width="1.3"/><rect x="13" y="8" width="3" height="5" stroke="#0F6E56" stroke-width="1.3"/><path d="M2 13h16" stroke="#0F6E56" stroke-width="1.3" stroke-linecap="round"/></svg></div>
+              <div><div class="lib-school-name">Riverdale High</div><div class="lib-school-sub">All documents · 9 total · last updated today</div></div>
+            </div>
+            <div style="display:flex;gap:8px;">
+              <button class="lib-head-btn" onclick="showView('convo')" style="background:var(--surface);font-family:'DM Sans',sans-serif;">
+                <svg viewBox="0 0 14 14" fill="none"><rect x="1" y="2" width="12" height="10" rx="1.5" stroke="currentColor" stroke-width="1"/><path d="M3 5h8M3 8h5" stroke="currentColor" stroke-width="1" stroke-linecap="round"/></svg>
+                Chat with docs ↗
+              </button>
+              <button class="lib-head-btn primary" style="font-family:'DM Sans',sans-serif;">
+                <svg viewBox="0 0 14 14" fill="none"><path d="M7 2v8M4 5l3-3 3 3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M2 12h10" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+                Upload
+              </button>
+            </div>
+          </div>
+          <div class="lib-stats">
+            <div class="lib-stat"><div class="lib-stat-n">9</div><div class="lib-stat-l">Documents</div></div>
+            <div class="lib-stat"><div class="lib-stat-n">3</div><div class="lib-stat-l">Added this term</div></div>
+            <div class="lib-stat"><div class="lib-stat-n" style="color:var(--amber);">1</div><div class="lib-stat-l">Pending approval</div></div>
+            <div class="lib-stat"><div class="lib-stat-n">8</div><div class="lib-stat-l">Live in KB</div></div>
+          </div>
+        </div>
+
+        <div class="lib-pending-banner">
+          <div class="lib-pb-head"><svg width="13" height="13" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5.5" stroke="#854F0B" stroke-width="1"/><path d="M7 4.5v3l1.5 1" stroke="#854F0B" stroke-width="1" stroke-linecap="round"/></svg><div class="lib-pb-title">Waiting for administrator approval</div></div>
+          <div class="lib-pb-row">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style="flex-shrink:0;"><path d="M3 1h6l4 4v8a1 1 0 01-1 1H3a1 1 0 01-1-1V2a1 1 0 011-1z" stroke="#854F0B" stroke-width="1"/></svg>
+            <div class="lib-pb-name">Community Partnerships 2025.pdf</div>
+            <div class="lib-pb-reason">Low similarity · uploaded 2 Apr 2026</div>
+          </div>
+        </div>
+
+        <div class="lib-filters">
+          <div class="lib-fp on">All</div>
+          <div class="lib-fp">PDF</div>
+          <div class="lib-fp">DOCX</div>
+          <div class="lib-fp">XLSX</div>
+          <div class="lib-fp">Uploaded by me</div>
+          <select class="lib-sort"><option>Newest first</option><option>Oldest first</option><option>A–Z</option></select>
+        </div>
+
+        <div class="lib-table">
+          <div class="lib-table-head">
+            <div class="lib-th">Document</div>
+            <div class="lib-th">Added by</div>
+            <div class="lib-th">Date</div>
+            <div class="lib-th">Status</div>
+            <div class="lib-th"></div>
+          </div>
+
+          <div class="lib-doc-row">
+            <div class="lib-doc-name-cell"><div class="lib-doc-icon pdf"><svg width="15" height="15" viewBox="0 0 14 14" fill="none"><path d="M3 1h6l4 4v8a1 1 0 01-1 1H3a1 1 0 01-1-1V2a1 1 0 011-1z" stroke="#993C1D" stroke-width="1"/></svg></div><div><div class="lib-doc-title">Riverdale Attendance Strategy 2026</div><div class="lib-doc-sub">PDF · 18 pages</div></div></div>
+            <div class="lib-doc-cell"><div class="lib-who"><div class="lib-who-av">JL</div>You</div></div>
+            <div class="lib-doc-cell muted">2 Apr 2026</div>
+            <div><span class="lib-status s-new">Just added</span></div>
+            <div class="lib-doc-actions"><div class="lib-doc-btn"><svg viewBox="0 0 12 12" fill="none"><path d="M1 6s2-4 5-4 5 4 5 4-2 4-5 4-5-4-5-4z" stroke="currentColor" stroke-width="1"/><circle cx="6" cy="6" r="1.5" stroke="currentColor" stroke-width="1"/></svg></div><div class="lib-doc-btn"><svg viewBox="0 0 12 12" fill="none"><path d="M6 1v7M3 5l3 3 3-3" stroke="currentColor" stroke-width="1" stroke-linecap="round"/><path d="M1 10h10" stroke="currentColor" stroke-width="1" stroke-linecap="round"/></svg></div></div>
+          </div>
+
+          <div class="lib-doc-row" style="opacity:.6;">
+            <div class="lib-doc-name-cell"><div class="lib-doc-icon pdf" style="background:#FAEEDA;"><svg width="15" height="15" viewBox="0 0 14 14" fill="none"><path d="M3 1h6l4 4v8a1 1 0 01-1 1H3a1 1 0 01-1-1V2a1 1 0 011-1z" stroke="#854F0B" stroke-width="1"/></svg></div><div><div class="lib-doc-title" style="color:#854F0B;">Community Partnerships 2025</div><div class="lib-doc-sub">PDF · 22 pages · pending</div></div></div>
+            <div class="lib-doc-cell"><div class="lib-who"><div class="lib-who-av">JL</div>You</div></div>
+            <div class="lib-doc-cell muted">2 Apr 2026</div>
+            <div><span class="lib-status s-pend">Pending</span></div>
+            <div class="lib-doc-actions"><div class="lib-doc-btn"><svg viewBox="0 0 12 12" fill="none"><path d="M1 6s2-4 5-4 5 4 5 4-2 4-5 4-5-4-5-4z" stroke="currentColor" stroke-width="1"/><circle cx="6" cy="6" r="1.5" stroke="currentColor" stroke-width="1"/></svg></div></div>
+          </div>
+
+          <div class="lib-doc-row">
+            <div class="lib-doc-name-cell"><div class="lib-doc-icon docx"><svg width="15" height="15" viewBox="0 0 14 14" fill="none"><path d="M3 1h6l4 4v8a1 1 0 01-1 1H3a1 1 0 01-1-1V2a1 1 0 011-1z" stroke="#0C447C" stroke-width="1"/></svg></div><div><div class="lib-doc-title">School Improvement Plan 2025</div><div class="lib-doc-sub">DOCX · 34 pages</div></div></div>
+            <div class="lib-doc-cell"><div class="lib-who"><div class="lib-who-av">MK</div>M. Kim</div></div>
+            <div class="lib-doc-cell muted">15 Mar 2026</div>
+            <div><span class="lib-status s-inkb">In KB</span></div>
+            <div class="lib-doc-actions"><div class="lib-doc-btn"><svg viewBox="0 0 12 12" fill="none"><path d="M1 6s2-4 5-4 5 4 5 4-2 4-5 4-5-4-5-4z" stroke="currentColor" stroke-width="1"/><circle cx="6" cy="6" r="1.5" stroke="currentColor" stroke-width="1"/></svg></div><div class="lib-doc-btn"><svg viewBox="0 0 12 12" fill="none"><path d="M6 1v7M3 5l3 3 3-3" stroke="currentColor" stroke-width="1" stroke-linecap="round"/><path d="M1 10h10" stroke="currentColor" stroke-width="1" stroke-linecap="round"/></svg></div></div>
+          </div>
+
+          <div class="lib-doc-row">
+            <div class="lib-doc-name-cell"><div class="lib-doc-icon xlsx"><svg width="15" height="15" viewBox="0 0 14 14" fill="none"><path d="M3 1h6l4 4v8a1 1 0 01-1 1H3a1 1 0 01-1-1V2a1 1 0 011-1z" stroke="#3B6D11" stroke-width="1"/></svg></div><div><div class="lib-doc-title">Term 2 Attendance Report 2026</div><div class="lib-doc-sub">XLSX · 4 sheets</div></div></div>
+            <div class="lib-doc-cell"><div class="lib-who"><div class="lib-who-av">JL</div>You</div></div>
+            <div class="lib-doc-cell muted">1 Mar 2026</div>
+            <div><span class="lib-status s-inkb">In KB</span></div>
+            <div class="lib-doc-actions"><div class="lib-doc-btn"><svg viewBox="0 0 12 12" fill="none"><path d="M1 6s2-4 5-4 5 4 5 4-2 4-5 4-5-4-5-4z" stroke="currentColor" stroke-width="1"/><circle cx="6" cy="6" r="1.5" stroke="currentColor" stroke-width="1"/></svg></div><div class="lib-doc-btn"><svg viewBox="0 0 12 12" fill="none"><path d="M6 1v7M3 5l3 3 3-3" stroke="currentColor" stroke-width="1" stroke-linecap="round"/><path d="M1 10h10" stroke="currentColor" stroke-width="1" stroke-linecap="round"/></svg></div></div>
+          </div>
+
+          <div class="lib-doc-row">
+            <div class="lib-doc-name-cell"><div class="lib-doc-icon pdf"><svg width="15" height="15" viewBox="0 0 14 14" fill="none"><path d="M3 1h6l4 4v8a1 1 0 01-1 1H3a1 1 0 01-1-1V2a1 1 0 011-1z" stroke="#993C1D" stroke-width="1"/></svg></div><div><div class="lib-doc-title">Wellbeing Framework 2025</div><div class="lib-doc-sub">PDF · 19 pages</div></div></div>
+            <div class="lib-doc-cell"><div class="lib-who"><div class="lib-who-av">SR</div>S. Rao</div></div>
+            <div class="lib-doc-cell muted">12 Feb 2026</div>
+            <div><span class="lib-status s-inkb">In KB</span></div>
+            <div class="lib-doc-actions"><div class="lib-doc-btn"><svg viewBox="0 0 12 12" fill="none"><path d="M1 6s2-4 5-4 5 4 5 4-2 4-5 4-5-4-5-4z" stroke="currentColor" stroke-width="1"/><circle cx="6" cy="6" r="1.5" stroke="currentColor" stroke-width="1"/></svg></div><div class="lib-doc-btn"><svg viewBox="0 0 12 12" fill="none"><path d="M6 1v7M3 5l3 3 3-3" stroke="currentColor" stroke-width="1" stroke-linecap="round"/><path d="M1 10h10" stroke="currentColor" stroke-width="1" stroke-linecap="round"/></svg></div></div>
+          </div>
+
+          <div class="lib-doc-row">
+            <div class="lib-doc-name-cell"><div class="lib-doc-icon docx"><svg width="15" height="15" viewBox="0 0 14 14" fill="none"><path d="M3 1h6l4 4v8a1 1 0 01-1 1H3a1 1 0 01-1-1V2a1 1 0 011-1z" stroke="#0C447C" stroke-width="1"/></svg></div><div><div class="lib-doc-title">Behaviour Management Policy 2025</div><div class="lib-doc-sub">DOCX · 11 pages</div></div></div>
+            <div class="lib-doc-cell"><div class="lib-who"><div class="lib-who-av">MK</div>M. Kim</div></div>
+            <div class="lib-doc-cell muted">8 Feb 2026</div>
+            <div><span class="lib-status s-inkb">In KB</span></div>
+            <div class="lib-doc-actions"><div class="lib-doc-btn"><svg viewBox="0 0 12 12" fill="none"><path d="M1 6s2-4 5-4 5 4 5 4-2 4-5 4-5-4-5-4z" stroke="currentColor" stroke-width="1"/><circle cx="6" cy="6" r="1.5" stroke="currentColor" stroke-width="1"/></svg></div><div class="lib-doc-btn"><svg viewBox="0 0 12 12" fill="none"><path d="M6 1v7M3 5l3 3 3-3" stroke="currentColor" stroke-width="1" stroke-linecap="round"/><path d="M1 10h10" stroke="currentColor" stroke-width="1" stroke-linecap="round"/></svg></div></div>
+          </div>
+
+          <div class="lib-doc-row">
+            <div class="lib-doc-name-cell"><div class="lib-doc-icon xlsx"><svg width="15" height="15" viewBox="0 0 14 14" fill="none"><path d="M3 1h6l4 4v8a1 1 0 01-1 1H3a1 1 0 01-1-1V2a1 1 0 011-1z" stroke="#3B6D11" stroke-width="1"/></svg></div><div><div class="lib-doc-title">Student Outcomes Summary 2025</div><div class="lib-doc-sub">XLSX · 2 sheets</div></div></div>
+            <div class="lib-doc-cell"><div class="lib-who"><div class="lib-who-av">JL</div>You</div></div>
+            <div class="lib-doc-cell muted">20 Jan 2026</div>
+            <div><span class="lib-status s-inkb">In KB</span></div>
+            <div class="lib-doc-actions"><div class="lib-doc-btn"><svg viewBox="0 0 12 12" fill="none"><path d="M1 6s2-4 5-4 5 4 5 4-2 4-5 4-5-4-5-4z" stroke="currentColor" stroke-width="1"/><circle cx="6" cy="6" r="1.5" stroke="currentColor" stroke-width="1"/></svg></div><div class="lib-doc-btn"><svg viewBox="0 0 12 12" fill="none"><path d="M6 1v7M3 5l3 3 3-3" stroke="currentColor" stroke-width="1" stroke-linecap="round"/><path d="M1 10h10" stroke="currentColor" stroke-width="1" stroke-linecap="round"/></svg></div></div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div><!-- end view-library -->
+
+</div>
+<script>
+function runDemo(type) {
+  const container = document.getElementById('demo-content');
+  container.style.display = 'flex';
+  container.innerHTML = '';
+
+  if(type === 'analysis') {
+    appendMsg(container, 'user', 'Run foundational analysis on roster_2026.csv');
+    appendMsg(container, 'ai-thinking', '');
+
+    setTimeout(() => {
+      removeThinking(container);
+
+      // Step 1: Variable matching
+      appendMsg(container, 'ai', 'I\'ve reviewed your file and found <strong>847 students</strong> across Grades 6–9. Before running the analysis, here\'s how I\'ve matched your columns to each indicator — please confirm this looks right.');
+      appendRaw(container, `
+        <div class="threshold-banner">
+          <div class="tb-title">Variable matching</div>
+          <div class="tb-row"><div class="tb-dot" style="background:var(--green);"></div><div class="tb-label" style="font-family:'DM Mono',monospace;font-size:11px;color:var(--text2);">days_absent</div><div class="tb-desc">→ Chronic absence</div></div>
+          <div class="tb-row"><div class="tb-dot" style="background:var(--green);"></div><div class="tb-label" style="font-family:'DM Mono',monospace;font-size:11px;color:var(--text2);">suspension_count</div><div class="tb-desc">→ Suspensions</div></div>
+          <div class="tb-row"><div class="tb-dot" style="background:var(--green);"></div><div class="tb-label" style="font-family:'DM Mono',monospace;font-size:11px;color:var(--text2);">math_grade</div><div class="tb-desc">→ Math course grade</div></div>
+          <div class="tb-row"><div class="tb-dot" style="background:var(--green);"></div><div class="tb-label" style="font-family:'DM Mono',monospace;font-size:11px;color:var(--text2);">eng_grade</div><div class="tb-desc">→ English course grade</div></div>
+          <div class="tb-row"><div class="tb-dot" style="background:var(--amber);"></div><div class="tb-label" style="font-family:'DM Mono',monospace;font-size:11px;color:var(--amber);">other_courses</div><div class="tb-desc" style="color:var(--amber);">→ Review — mixed formats detected</div></div>
+          <div class="tb-row"><div class="tb-dot" style="background:var(--green);"></div><div class="tb-label" style="font-family:'DM Mono',monospace;font-size:11px;color:var(--text2);">grade_level</div><div class="tb-desc">→ Grade / year level</div></div>
+          <div class="tb-change" onclick="continueConvo('criteria')">Looks good, continue →</div>
+        </div>`);
+      appendMsg(container, 'ai', 'I flagged <strong>other_courses</strong> for review — the column contains mixed formats across rows. Would you like me to attempt to parse it, or exclude it from this run?');
+      appendRaw(container, `
+        <div class="scaffold-opts">
+          <div class="sopt" onclick="continueConvo('criteria')">Looks good, continue ↗</div>
+          <div class="sopt">Exclude other_courses for now ↗</div>
+        </div>`);
+      scrollBottom();
+    }, 900);
+  }
+
+  else if(type === 'question') {
+    appendMsg(container, 'user', 'Which students have both chronic absenteeism and failing grades?');
+    appendMsg(container, 'ai-thinking', '');
+    setTimeout(() => {
+      removeThinking(container);
+      appendRaw(container, `<div class="src-tag"><span class="st data">Your data</span></div>`);
+      appendRaw(container, `
+        <div class="mini-chart">
+          <div class="mc-title">Students with chronic absence + course failure — by grade</div>
+          <div class="br"><div class="bl">Grade 6</div><div class="bt"><div class="bf" style="width:28%;background:var(--navy);"></div></div><div class="bv">18 students</div></div>
+          <div class="br"><div class="bl">Grade 7</div><div class="bt"><div class="bf" style="width:38%;background:var(--navy);"></div></div><div class="bv">26</div></div>
+          <div class="br"><div class="bl">Grade 8</div><div class="bt"><div class="bf" style="width:56%;background:var(--red);"></div></div><div class="bv">45 ⚠ highest</div></div>
+          <div class="br"><div class="bl">Grade 9</div><div class="bt"><div class="bf" style="width:50%;background:var(--navy);"></div></div><div class="bv">42</div></div>
+          <div class="mc-actions"><div class="mca">+ Add to report</div><div class="mca">Export PNG</div></div>
+        </div>`);
+      appendMsg(container, 'ai', '<strong>131 students school-wide</strong> have both chronic absenteeism and at least one course failure. Grade 8 has the most (45 students), followed closely by Grade 9 (42). This absent + failing overlap is a strong early warning: students who miss significant school time are 3× more likely to accumulate course failures by end of term. Grade 8 deserves focused attention.');
+      appendRaw(container, `
+        <div style="display:flex;flex-direction:column;gap:4px;">
+          <div class="sc-label">Continue —</div>
+          <div class="scaffold-opts">
+            <div class="sopt" onclick="runDemo('brainstorm')">What interventions work for this group? ↗</div>
+            <div class="sopt">Show me which courses they're failing ↗</div>
+            <div class="sopt">Focus on Grade 8 specifically ↗</div>
+          </div>
+        </div>`);
+      scrollBottom();
+    }, 800);
+  }
+
+  else if(type === 'brainstorm') {
+    appendMsg(container, 'user', 'Brainstorm interventions for chronically absent and failing Grade 9 students');
+    appendMsg(container, 'ai-thinking', '');
+    setTimeout(() => {
+      removeThinking(container);
+      appendRaw(container, `
+        <div class="src-tag"><span class="st kb">Student success KB</span><span class="st school">School-based</span><span class="st ai">General knowledge</span></div>
+        <div class="ctx-pill"><div class="ctx-dot"></div>Drawing on research for your 42 at-risk Grade 9 students</div>`);
+      appendRaw(container, `
+        <div class="brainstorm-grid">
+          <div class="bcard">
+            <div class="bcard-head"><div class="bcard-num">1</div><div class="bcard-title">Trusted adult assignment</div></div>
+            <div class="bcard-body">Assign one consistent adult to each student — a teacher, counsellor, or coordinator who checks in weekly. Evidence shows this single relationship reduces chronic absenteeism by 10–20% within a semester.</div>
+            <div class="bcard-evidence"><svg width="10" height="10" viewBox="0 0 12 12" fill="none"><rect x="1" y="1" width="10" height="10" rx="2" stroke="currentColor" stroke-width="1"/><path d="M3 4h6M3 7h4" stroke="currentColor" stroke-width="1" stroke-linecap="round"/></svg>Attendance Works (2023) · Riverdale Wellbeing Framework p.7</div>
+          </div>
+          <div class="bcard">
+            <div class="bcard-head"><div class="bcard-num">2</div><div class="bcard-title">Barrier identification protocol</div></div>
+            <div class="bcard-body">Structured 1:1 conversation to identify the root cause: transport, financial pressure, mental health, or disengagement. Generic interventions fail — the right response depends entirely on the barrier type.</div>
+            <div class="bcard-evidence"><svg width="10" height="10" viewBox="0 0 12 12" fill="none"><rect x="1" y="1" width="10" height="10" rx="2" stroke="currentColor" stroke-width="1"/><path d="M3 4h6M3 7h4" stroke="currentColor" stroke-width="1" stroke-linecap="round"/></svg>District Strategic Plan 2025 · General knowledge</div>
+          </div>
+          <div class="bcard">
+            <div class="bcard-head"><div class="bcard-num">3</div><div class="bcard-title">Personalised family outreach</div></div>
+            <div class="bcard-body">Phone calls that reference the student's specific attendance pattern outperform generic letters significantly. For students who also have suspensions, rebuilding family trust should come before attendance conversations.</div>
+            <div class="bcard-evidence"><svg width="10" height="10" viewBox="0 0 12 12" fill="none"><rect x="1" y="1" width="10" height="10" rx="2" stroke="currentColor" stroke-width="1"/><path d="M3 4h6M3 7h4" stroke="currentColor" stroke-width="1" stroke-linecap="round"/></svg>Attendance Works (2023)</div>
+          </div>
+          <div class="bcard">
+            <div class="bcard-head"><div class="bcard-num">4</div><div class="bcard-title">Academic catch-up pairing</div></div>
+            <div class="bcard-body">Students who are both absent and failing need a clear, achievable path back into coursework. Peer tutoring or targeted catch-up sessions tied to specific failing subjects — not general homework help — show the strongest results.</div>
+            <div class="bcard-evidence"><svg width="10" height="10" viewBox="0 0 12 12" fill="none"><rect x="1" y="1" width="10" height="10" rx="2" stroke="currentColor" stroke-width="1"/><path d="M3 4h6M3 7h4" stroke="currentColor" stroke-width="1" stroke-linecap="round"/></svg>General knowledge · Student success KB</div>
+          </div>
+        </div>`);
+      appendMsg(container, 'ai', 'These four strategies can be sequenced: <strong>identify the barrier first</strong>, then assign a trusted adult, then engage the family, then address the academic gap. Jumping straight to course catch-up without addressing the root cause rarely works.');
+      appendRaw(container, `
+        <div style="display:flex;flex-direction:column;gap:4px;">
+          <div class="sc-label">What would you like to do next?</div>
+          <div class="scaffold-opts">
+            <div class="sopt">Turn this into a 2-week action plan ↗</div>
+            <div class="sopt">Search for more recent research ↗</div>
+            <div class="sopt">Create a meeting agenda to discuss ↗</div>
+          </div>
+        </div>`);
+      scrollBottom();
+    }, 900);
+  }
+}
+
+function continueConvo(topic) {
+  const container = document.getElementById('demo-content');
+
+  if(topic === 'criteria') {
+    appendMsg(container, 'user', 'Looks good, continue');
+    appendMsg(container, 'ai', 'How would you like to define each indicator? You can adjust these thresholds now or re-run with different settings at any time.');
+    appendRaw(container, `
+      <div class="threshold-banner">
+        <div class="tb-title">Set indicator criteria</div>
+        <div class="tb-row" style="align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <div class="tb-dot" style="background:var(--blue);flex-shrink:0;"></div>
+            <div class="tb-label">Chronic absence — flag students with</div>
+          </div>
+          <select style="font-size:12px;border:1px solid var(--border2);border-radius:6px;padding:5px 8px;color:var(--text);background:var(--surface);font-family:'DM Sans',sans-serif;cursor:pointer;outline:none;">
+            <option>≥10% days missed</option>
+            <option>≥15% days missed</option>
+            <option>≥20% days missed</option>
+          </select>
+        </div>
+        <div class="tb-row" style="align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <div class="tb-dot" style="background:var(--navy);flex-shrink:0;"></div>
+            <div class="tb-label">Course failure — flag students who</div>
+          </div>
+          <select style="font-size:12px;border:1px solid var(--border2);border-radius:6px;padding:5px 8px;color:var(--text);background:var(--surface);font-family:'DM Sans',sans-serif;cursor:pointer;outline:none;">
+            <option>Fail (F) in ≥1 course</option>
+            <option>Get D or F in ≥1 course</option>
+            <option>Fail ≥2 courses</option>
+            <option>Get D or F in ≥2 courses</option>
+          </select>
+        </div>
+        <div style="padding:8px 0 6px;border-bottom:1px solid var(--border);">
+          <div style="font-size:11px;font-weight:600;color:var(--text2);margin-bottom:6px;padding-left:20px;">Courses included in failure check</div>
+          <div style="font-size:10px;color:var(--text3);padding-left:20px;margin-bottom:6px;">Format auto-detected from your data — switch per course if needed</div>
+          <div id="course-list" style="display:flex;flex-direction:column;gap:6px;padding-left:20px;">
+            <div class="course-row" style="display:flex;align-items:center;gap:6px;">
+              <input type="text" value="Math" style="font-size:12px;border:1px solid var(--border2);border-radius:6px;padding:4px 8px;width:110px;font-family:'DM Sans',sans-serif;color:var(--text);background:var(--surface);outline:none;" placeholder="Course name"/>
+              <select onchange="toggleScoreInput(this)" style="font-size:12px;border:1px solid var(--border2);border-radius:6px;padding:4px 8px;color:var(--text);background:var(--surface);font-family:'DM Sans',sans-serif;cursor:pointer;outline:none;">
+                <option value="letter">Letter grade</option>
+                <option value="score">Numeric score</option>
+              </select>
+              <div class="letter-opts" style="display:flex;align-items:center;">
+                <select style="font-size:12px;border:1px solid var(--border2);border-radius:6px;padding:4px 8px;color:var(--text);background:var(--surface);font-family:'DM Sans',sans-serif;cursor:pointer;outline:none;">
+                  <option>F only</option>
+                  <option>D or F</option>
+                </select>
+              </div>
+              <div class="score-opts" style="display:none;align-items:center;gap:4px;">
+                <span style="font-size:11px;color:var(--text2);">below</span>
+                <input type="number" value="60" min="0" max="100" style="font-size:12px;border:1px solid var(--border2);border-radius:6px;padding:4px 8px;width:54px;font-family:'DM Mono',monospace;color:var(--text);background:var(--surface);outline:none;text-align:center;"/>
+                <span style="font-size:11px;color:var(--text2);">/ 100</span>
+              </div>
+              <div onclick="this.closest('.course-row').remove()" style="width:20px;height:20px;border-radius:50%;border:1px solid var(--border2);display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--text3);font-size:14px;flex-shrink:0;line-height:1;margin-left:2px;">×</div>
+            </div>
+            <div class="course-row" style="display:flex;align-items:center;gap:6px;">
+              <input type="text" value="English" style="font-size:12px;border:1px solid var(--border2);border-radius:6px;padding:4px 8px;width:110px;font-family:'DM Sans',sans-serif;color:var(--text);background:var(--surface);outline:none;" placeholder="Course name"/>
+              <select onchange="toggleScoreInput(this)" style="font-size:12px;border:1px solid var(--border2);border-radius:6px;padding:4px 8px;color:var(--text);background:var(--surface);font-family:'DM Sans',sans-serif;cursor:pointer;outline:none;">
+                <option value="letter">Letter grade</option>
+                <option value="score">Numeric score</option>
+              </select>
+              <div class="letter-opts" style="display:flex;align-items:center;">
+                <select style="font-size:12px;border:1px solid var(--border2);border-radius:6px;padding:4px 8px;color:var(--text);background:var(--surface);font-family:'DM Sans',sans-serif;cursor:pointer;outline:none;">
+                  <option>F only</option>
+                  <option>D or F</option>
+                </select>
+              </div>
+              <div class="score-opts" style="display:none;align-items:center;gap:4px;">
+                <span style="font-size:11px;color:var(--text2);">below</span>
+                <input type="number" value="60" min="0" max="100" style="font-size:12px;border:1px solid var(--border2);border-radius:6px;padding:4px 8px;width:54px;font-family:'DM Mono',monospace;color:var(--text);background:var(--surface);outline:none;text-align:center;"/>
+                <span style="font-size:11px;color:var(--text2);">/ 100</span>
+              </div>
+              <div onclick="this.closest('.course-row').remove()" style="width:20px;height:20px;border-radius:50%;border:1px solid var(--border2);display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--text3);font-size:14px;flex-shrink:0;line-height:1;margin-left:2px;">×</div>
+            </div>
+          </div>
+          <div onclick="addCourseRow()" style="display:inline-flex;align-items:center;gap:5px;margin-top:7px;margin-left:20px;font-size:11px;font-weight:600;color:var(--primary);cursor:pointer;padding:4px 10px;border:1px dashed var(--primary-mid);border-radius:6px;">
+            <span style="font-size:14px;line-height:1;">+</span> Add another course
+          </div>
+        </div>
+        <div class="tb-row" style="align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <div class="tb-dot" style="background:var(--amber);flex-shrink:0;"></div>
+            <div class="tb-label">Suspension — flag students with</div>
+          </div>
+          <select style="font-size:12px;border:1px solid var(--border2);border-radius:6px;padding:5px 8px;color:var(--text);background:var(--surface);font-family:'DM Sans',sans-serif;cursor:pointer;outline:none;">
+            <option>≥1 suspension</option>
+            <option>≥2 suspensions</option>
+            <option>≥3 suspensions</option>
+          </select>
+        </div>
+        <div class="tb-row" style="align-items:center;justify-content:space-between;padding:6px 0;">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <div class="tb-dot" style="background:var(--text3);flex-shrink:0;"></div>
+            <div class="tb-label">Absence calculation based on</div>
+          </div>
+          <select style="font-size:12px;border:1px solid var(--border2);border-radius:6px;padding:5px 8px;color:var(--text);background:var(--surface);font-family:'DM Sans',sans-serif;cursor:pointer;outline:none;">
+            <option>% of enrolled days</option>
+            <option>Total days missed</option>
+          </select>
+        </div>
+        <div class="tb-change" onclick="continueConvo('overview')">Run analysis with these criteria →</div>
+      </div>`);
+    scrollBottom();
+  }
+
+  else if(topic === 'overview') {
+    appendMsg(container, 'user', 'Run analysis with these criteria');
+    appendMsg(container, 'ai-thinking', '');
+    setTimeout(() => {
+      removeThinking(container);
+      appendMsg(container, 'ai', 'Here is the overview across your full dataset of 847 students.');
+
+      appendDivider(container, 'Dataset overview — Grades 6–9 · 847 students');
+
+      appendRaw(container, `
+        <div class="dash-grid">
+          <div class="dash-card" style="border-top:3px solid var(--primary);"><div class="dash-n" style="color:var(--primary);">847</div><div class="dash-label">Total students</div><div class="dash-pct">4 grades uploaded</div></div>
+          <div class="dash-card" style="border-top:3px solid var(--navy);"><div class="dash-n" style="color:var(--navy);">389</div><div class="dash-label">Any flag</div><div class="dash-pct">45.9% of dataset</div></div>
+          <div class="dash-card" style="border-top:3px solid var(--red);"><div class="dash-n" style="color:var(--red);">67</div><div class="dash-label">All 3 flags</div><div class="dash-pct">7.9% of dataset</div></div>
+        </div>`);
+
+      appendRaw(container, `
+        <div class="mini-chart">
+          <div class="mc-title">Indicator breakdown — % of dataset</div>
+          <div class="br"><div class="bl">Failing ≥1 course</div><div class="bt"><div class="bf" style="width:25.3%;background:var(--navy);"></div></div><div class="bv">214 · 25.3%</div></div>
+          <div class="br"><div class="bl">Chronic absence (≥10%)</div><div class="bt"><div class="bf" style="width:18.7%;background:var(--blue);"></div></div><div class="bv">158 · 18.7%</div></div>
+          <div class="br"><div class="bl">Suspended (≥1)</div><div class="bt"><div class="bf" style="width:10.4%;background:var(--amber);"></div></div><div class="bv">88 · 10.4%</div></div>
+          <div class="mc-actions"><div class="mca">+ Add to report</div><div class="mca">Export PNG</div></div>
+        </div>`);
+
+      appendRaw(container, `
+        <div class="mini-chart">
+          <div class="mc-title">Flag co-occurrence — % of dataset</div>
+          <div class="br"><div class="bl" style="display:flex;align-items:center;gap:4px;"><span style="background:#EAF3DE;color:#3B6D11;padding:1px 6px;border-radius:20px;font-size:9px;font-weight:700;">Fail math</span><span style="font-size:9px;color:var(--text3);">only</span></div><div class="bt"><div class="bf" style="width:9.3%;background:#3B6D11;"></div></div><div class="bv">79 · 9.3%</div></div>
+          <div class="br"><div class="bl" style="display:flex;align-items:center;gap:4px;"><span style="background:#E6F0FB;color:#1A5FAB;padding:1px 6px;border-radius:20px;font-size:9px;font-weight:700;">Fail Eng.</span><span style="font-size:9px;color:var(--text3);">only</span></div><div class="bt"><div class="bf" style="width:7.6%;background:#1A5FAB;"></div></div><div class="bv">64 · 7.6%</div></div>
+          <div class="br"><div class="bl" style="display:flex;align-items:center;gap:4px;"><span style="background:var(--red-light);color:var(--red);padding:1px 6px;border-radius:20px;font-size:9px;font-weight:700;">Absent</span><span style="font-size:9px;color:var(--text3);">only</span></div><div class="bt"><div class="bf" style="width:10.0%;background:var(--red);"></div></div><div class="bv">85 · 10.0%</div></div>
+          <div class="br"><div class="bl" style="display:flex;align-items:center;gap:4px;"><span style="background:var(--amber-light);color:var(--amber);padding:1px 6px;border-radius:20px;font-size:9px;font-weight:700;">Suspended</span><span style="font-size:9px;color:var(--text3);">only</span></div><div class="bt"><div class="bf" style="width:7.5%;background:var(--amber);"></div></div><div class="bv">63 · 7.5%</div></div>
+          <div class="br"><div class="bl" style="display:flex;align-items:center;gap:4px;"><span style="background:var(--red-light);color:var(--red);padding:1px 6px;border-radius:20px;font-size:9px;font-weight:700;">Abs</span><span style="font-size:9px;color:var(--text3);">+</span><span style="background:#E6F0FB;color:#1A5FAB;padding:1px 6px;border-radius:20px;font-size:9px;font-weight:700;">Fail</span></div><div class="bt"><div class="bf" style="width:11.3%;background:var(--primary);"></div></div><div class="bv">96 · 11.3%</div></div>
+          <div class="br" style="margin-top:4px;padding:6px 10px;background:var(--red-light);border-radius:8px;border:1px solid #F0B8B5;"><div class="bl" style="color:var(--red);font-weight:600;">All 3 flags</div><div class="bt"><div class="bf" style="width:7.9%;background:var(--red);"></div></div><div class="bv" style="color:var(--red);font-weight:600;">67 · 7.9%</div></div>
+          <div class="mc-actions"><div class="mca">+ Add to report</div><div class="mca">Export PNG</div></div>
+        </div>`);
+
+      appendMsg(container, 'ai', 'More than a third of your students carry at least one risk flag. Course failure is the most widespread indicator at 25.3%. The 96 students flagged for both absence and course failure are your largest combined-risk group — and the 67 students with all three flags simultaneously are your most urgent priority. Ready to see how this breaks down by grade?');
+
+      appendRaw(container, `
+        <div class="scaffold-opts">
+          <div class="sopt" onclick="continueConvo('gradebreakdown')">See grade breakdown ↗</div>
+          <div class="sopt">Export overview ↗</div>
+          <div class="sopt" onclick="continueConvo('all3flags')">Show me the 67 students with all 3 flags ↗</div>
+        </div>`);
+      scrollBottom();
+    }, 900);
+  }
+
+  else if(topic === 'gradebreakdown') {
+    appendMsg(container, 'user', 'See grade breakdown');
+    appendMsg(container, 'ai-thinking', '');
+    setTimeout(() => {
+      removeThinking(container);
+
+      appendRaw(container, `
+        <div class="threshold-banner" style="background:var(--gold-light);border-color:var(--gold-mid);">
+          <div class="tb-title" style="color:#633806;">Pattern detected</div>
+          <div class="tb-desc" style="color:#7A5500;font-size:12px;line-height:1.6;">Grade 8 shows the sharpest concentration of risk — students with all 3 flags nearly doubles from Grade 7 (3.4%) to Grade 8 (13.8%), and chronic absence peaks at 20.2%. The Grade 6→7 transition also shows a notable rise in course failures (+8pp).</div>
+        </div>`);
+
+      appendDivider(container, 'Breakdown by grade');
+
+      appendRaw(container, `
+        <style>
+          .acc-grade-item{background:var(--surface);border-radius:var(--radius-lg);margin-bottom:6px;border:1px solid var(--border);overflow:hidden;}
+          .acc-grade-item.open{border-color:var(--primary-mid);}
+          .acc-grade-item.warn{border-left:3px solid var(--amber-mid);}
+          .acc-grade-item.alert{border-left:3px solid var(--red);}
+          .acc-grade-hdr{display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer;user-select:none;}
+          .acc-grade-hdr:hover{background:var(--bg);}
+          .acc-g-title{font-size:14px;font-weight:600;color:var(--text);width:72px;flex-shrink:0;}
+          .acc-g-meta{font-size:10px;color:var(--text3);flex-shrink:0;}
+          .acc-g-track-wrap{flex:1;display:flex;align-items:center;gap:7px;}
+          .acc-g-track{flex:1;max-width:130px;background:var(--bg2);border-radius:3px;height:7px;overflow:hidden;}
+          .acc-g-fill{height:100%;border-radius:3px;}
+          .acc-g-pct{font-size:11px;font-weight:500;color:var(--text);}
+          .acc-g-chev{color:var(--text3);font-size:10px;flex-shrink:0;transition:transform .2s;}
+          .acc-grade-item.open .acc-g-chev{transform:rotate(180deg);}
+          .acc-grade-body{display:none;padding:0 14px 12px;}
+          .acc-grade-item.open .acc-grade-body{display:block;}
+          .acc-exp-sec{margin-bottom:4px;}
+          .acc-exp-hdr{display:flex;align-items:center;justify-content:space-between;padding:6px 9px;background:var(--bg2);border-radius:7px;cursor:pointer;border:1px solid var(--border);}
+          .acc-exp-hdr:hover{background:var(--bg3);}
+          .acc-exp-sec.open .acc-exp-hdr{background:var(--primary-light);border-color:var(--primary-mid);border-radius:7px 7px 0 0;}
+          .acc-exp-title{font-size:11px;font-weight:500;color:var(--text);}
+          .acc-exp-hint{font-size:10px;color:var(--text3);}
+          .acc-exp-count{font-size:11px;font-weight:600;color:var(--text);font-family:'DM Mono',monospace;}
+          .acc-exp-chev{font-size:9px;color:var(--text3);transition:transform .2s;}
+          .acc-exp-sec.open .acc-exp-chev{transform:rotate(180deg);}
+          .acc-exp-body{display:none;padding:8px 10px;background:#F9FBFB;border:1px solid var(--primary-mid);border-top:none;border-radius:0 0 7px 7px;}
+          .acc-exp-sec.open .acc-exp-body{display:block;}
+          .acc-col-hd{display:flex;align-items:center;gap:6px;padding:0 2px 5px;border-bottom:1px solid var(--border);margin-bottom:5px;}
+          .acc-ch-tags{width:105px;flex-shrink:0;}
+          .acc-ch-bar{flex:1;font-size:9px;font-weight:500;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;}
+          .acc-ch-count{font-size:9px;font-weight:500;color:var(--text3);text-transform:uppercase;width:75px;text-align:right;flex-shrink:0;}
+          .acc-ch-col{font-size:9px;font-weight:500;color:var(--text3);text-transform:uppercase;width:48px;text-align:right;flex-shrink:0;}
+          .acc-drow{display:flex;align-items:center;gap:6px;margin-bottom:4px;padding:2px 3px;border-radius:5px;}
+          .acc-drow:hover{background:var(--bg2);}
+          .acc-drow-tags{display:flex;align-items:center;gap:3px;width:105px;flex-shrink:0;}
+          .acc-drow-bw{flex:1;background:var(--bg2);border-radius:2px;height:10px;overflow:hidden;}
+          .acc-drow-bf{height:100%;border-radius:2px;}
+          .acc-drow-count{font-size:10px;color:var(--text2);font-family:'DM Mono',monospace;white-space:nowrap;flex-shrink:0;width:75px;text-align:right;}
+          .acc-drow-avg{width:48px;flex-shrink:0;text-align:right;font-size:10px;font-weight:500;color:var(--text);font-family:'DM Mono',monospace;}
+          .acc-all3{border-radius:7px;padding:7px 10px;margin-top:6px;border:1px solid #F0B8B5;background:var(--red-light);display:flex;align-items:center;gap:8px;}
+          .acc-all3-left{flex-shrink:0;}
+          .acc-all3-lbl{font-size:9px;color:var(--text3);margin-bottom:1px;}
+          .acc-all3-n{font-size:17px;font-weight:600;color:var(--red);line-height:1;}
+          .acc-all3-bw{flex:1;background:#F0C8C4;border-radius:2px;height:10px;overflow:hidden;}
+          .acc-all3-bf{height:100%;border-radius:2px;background:var(--red);}
+          .acc-all3-count{font-size:10px;color:var(--red);font-family:'DM Mono',monospace;width:75px;text-align:right;flex-shrink:0;font-weight:600;}
+          .acc-all3-avg{width:48px;flex-shrink:0;text-align:right;font-size:10px;font-weight:600;color:var(--red);font-family:'DM Mono',monospace;}
+        </style>
+
+        <div id="grade-accordion" style="max-width:84%;">
+
+          <!-- GRADE 6 -->
+          <div class="acc-grade-item" id="ag6">
+            <div class="acc-grade-hdr" onclick="toggleGradeAcc('ag6')">
+              <div class="acc-g-title">Grade 6</div><div class="acc-g-meta">n = 198</div>
+              <div class="acc-g-track-wrap"><div class="acc-g-track"><div class="acc-g-fill" style="width:15.6%;background:#4A90D9;"></div></div><div class="acc-g-pct">15.6% flagged</div></div>
+              <div class="acc-g-chev">▼</div>
+            </div>
+            <div class="acc-grade-body">
+              <div class="acc-exp-sec" id="ag6s"><div class="acc-exp-hdr" onclick="toggleGradeExp('ag6s')"><div><div class="acc-exp-title">Single flag only</div><div class="acc-exp-hint">Tailored single response</div></div><div style="display:flex;align-items:center;gap:8px;"><div class="acc-exp-count">41 · 20.7%</div><div class="acc-exp-chev">▼</div></div></div>
+                <div class="acc-exp-body"><div class="acc-col-hd"><div class="acc-ch-tags"></div><div class="acc-ch-bar">% of grade</div><div class="acc-ch-count">Count · %</div><div class="acc-ch-col">Days</div><div class="acc-ch-col">Courses</div><div class="acc-ch-col">Incidents</div></div>
+                  <div class="acc-drow"><div class="acc-drow-tags"><span style="background:#EAF3DE;color:#3B6D11;padding:1px 6px;border-radius:20px;font-size:9px;font-weight:700;">Fail math</span><span style="font-size:9px;color:var(--text3);">only</span></div><div class="acc-drow-bw"><div class="acc-drow-bf" style="width:7.6%;background:#3B6D11;"></div></div><div class="acc-drow-count">15 · 7.6%</div><div class="acc-drow-avg">5.6</div><div class="acc-drow-avg">1.0</div><div class="acc-drow-avg">0.1</div></div>
+                  <div class="acc-drow"><div class="acc-drow-tags"><span style="background:#E6F0FB;color:#1A5FAB;padding:1px 6px;border-radius:20px;font-size:9px;font-weight:700;">Fail Eng.</span><span style="font-size:9px;color:var(--text3);">only</span></div><div class="acc-drow-bw"><div class="acc-drow-bf" style="width:6.1%;background:#1A5FAB;"></div></div><div class="acc-drow-count">12 · 6.1%</div><div class="acc-drow-avg">5.2</div><div class="acc-drow-avg">1.0</div><div class="acc-drow-avg">0.1</div></div>
+                  <div class="acc-drow"><div class="acc-drow-tags"><span style="background:var(--red-light);color:var(--red);padding:1px 6px;border-radius:20px;font-size:9px;font-weight:700;">Absent</span><span style="font-size:9px;color:var(--text3);">only</span></div><div class="acc-drow-bw"><div class="acc-drow-bf" style="width:4.0%;background:var(--red);"></div></div><div class="acc-drow-count">8 · 4.0%</div><div class="acc-drow-avg">12.4</div><div class="acc-drow-avg">1.0</div><div class="acc-drow-avg">0.2</div></div>
+                  <div class="acc-drow"><div class="acc-drow-tags"><span style="background:var(--amber-light);color:var(--amber);padding:1px 6px;border-radius:20px;font-size:9px;font-weight:700;">Suspended</span><span style="font-size:9px;color:var(--text3);">only</span></div><div class="acc-drow-bw"><div class="acc-drow-bf" style="width:3.0%;background:var(--amber);"></div></div><div class="acc-drow-count">6 · 3.0%</div><div class="acc-drow-avg">7.1</div><div class="acc-drow-avg">1.2</div><div class="acc-drow-avg">1.6</div></div>
+                </div>
+              </div>
+              <div class="acc-exp-sec" style="margin-top:4px;" id="ag6c"><div class="acc-exp-hdr" onclick="toggleGradeExp('ag6c')"><div><div class="acc-exp-title">Combinations</div><div class="acc-exp-hint">Coordinated response needed</div></div><div style="display:flex;align-items:center;gap:8px;"><div class="acc-exp-count">22 · 11.1%</div><div class="acc-exp-chev">▼</div></div></div>
+                <div class="acc-exp-body"><div class="acc-col-hd"><div class="acc-ch-tags"></div><div class="acc-ch-bar">% of grade</div><div class="acc-ch-count">Count · %</div><div class="acc-ch-col">Days</div><div class="acc-ch-col">Courses</div><div class="acc-ch-col">Incidents</div></div>
+                  <div class="acc-drow"><div class="acc-drow-tags"><span style="background:var(--red-light);color:var(--red);padding:1px 5px;border-radius:20px;font-size:9px;font-weight:700;">Abs</span><span style="font-size:9px;color:var(--text3);">+</span><span style="background:#E6F0FB;color:#1A5FAB;padding:1px 5px;border-radius:20px;font-size:9px;font-weight:700;">Fail</span></div><div class="acc-drow-bw"><div class="acc-drow-bf" style="width:4.5%;background:var(--primary);"></div></div><div class="acc-drow-count">9 · 4.5%</div><div class="acc-drow-avg">13.2</div><div class="acc-drow-avg">2.0</div><div class="acc-drow-avg">0.3</div></div>
+                  <div class="acc-drow"><div class="acc-drow-tags"><span style="background:var(--amber-light);color:var(--amber);padding:1px 5px;border-radius:20px;font-size:9px;font-weight:700;">Sus</span><span style="font-size:9px;color:var(--text3);">+</span><span style="background:#E6F0FB;color:#1A5FAB;padding:1px 5px;border-radius:20px;font-size:9px;font-weight:700;">Fail</span></div><div class="acc-drow-bw"><div class="acc-drow-bf" style="width:3.0%;background:var(--primary);"></div></div><div class="acc-drow-count">6 · 3.0%</div><div class="acc-drow-avg">9.8</div><div class="acc-drow-avg">1.8</div><div class="acc-drow-avg">2.9</div></div>
+                  <div class="acc-drow"><div class="acc-drow-tags"><span style="background:var(--red-light);color:var(--red);padding:1px 5px;border-radius:20px;font-size:9px;font-weight:700;">Abs</span><span style="font-size:9px;color:var(--text3);">+</span><span style="background:var(--amber-light);color:var(--amber);padding:1px 5px;border-radius:20px;font-size:9px;font-weight:700;">Sus</span></div><div class="acc-drow-bw"><div class="acc-drow-bf" style="width:1.5%;background:var(--primary);"></div></div><div class="acc-drow-count">4 · 1.5%</div><div class="acc-drow-avg">18.4</div><div class="acc-drow-avg">1.4</div><div class="acc-drow-avg">2.4</div></div>
+                </div>
+              </div>
+              <div class="acc-all3"><div class="acc-all3-left"><div class="acc-all3-lbl">All 3 flags</div><div class="acc-all3-n">9</div></div><div class="acc-all3-bw"><div class="acc-all3-bf" style="width:4.5%;"></div></div><div class="acc-all3-count">9 · 4.5%</div><div class="acc-all3-avg">21.3</div><div class="acc-all3-avg">3.1</div><div class="acc-all3-avg">3.4</div></div>
+            </div>
+          </div>
+
+          <!-- GRADE 7 -->
+          <div class="acc-grade-item warn" id="ag7">
+            <div class="acc-grade-hdr" onclick="toggleGradeAcc('ag7')">
+              <div class="acc-g-title">Grade 7</div><div class="acc-g-meta">n = 214</div>
+              <div class="acc-g-track-wrap"><div class="acc-g-track"><div class="acc-g-fill" style="width:19.6%;background:var(--amber);"></div></div><div class="acc-g-pct">19.6% flagged</div></div>
+              <div class="acc-g-chev">▼</div>
+            </div>
+            <div class="acc-grade-body">
+              <div class="acc-exp-sec open" id="ag7s"><div class="acc-exp-hdr" onclick="toggleGradeExp('ag7s')"><div><div class="acc-exp-title">Single flag only</div><div class="acc-exp-hint">Tailored single response</div></div><div style="display:flex;align-items:center;gap:8px;"><div class="acc-exp-count">58 · 27.1%</div><div class="acc-exp-chev">▼</div></div></div>
+                <div class="acc-exp-body"><div class="acc-col-hd"><div class="acc-ch-tags"></div><div class="acc-ch-bar">% of grade</div><div class="acc-ch-count">Count · %</div><div class="acc-ch-col">Days</div><div class="acc-ch-col">Courses</div><div class="acc-ch-col">Incidents</div></div>
+                  <div class="acc-drow"><div class="acc-drow-tags"><span style="background:#EAF3DE;color:#3B6D11;padding:1px 6px;border-radius:20px;font-size:9px;font-weight:700;">Fail math</span><span style="font-size:9px;color:var(--text3);">only</span></div><div class="acc-drow-bw"><div class="acc-drow-bf" style="width:9.8%;background:#3B6D11;"></div></div><div class="acc-drow-count">21 · 9.8%</div><div class="acc-drow-avg">5.9</div><div class="acc-drow-avg">1.0</div><div class="acc-drow-avg">0.2</div></div>
+                  <div class="acc-drow"><div class="acc-drow-tags"><span style="background:#E6F0FB;color:#1A5FAB;padding:1px 6px;border-radius:20px;font-size:9px;font-weight:700;">Fail Eng.</span><span style="font-size:9px;color:var(--text3);">only</span></div><div class="acc-drow-bw"><div class="acc-drow-bf" style="width:7.9%;background:#1A5FAB;"></div></div><div class="acc-drow-count">17 · 7.9%</div><div class="acc-drow-avg">5.5</div><div class="acc-drow-avg">1.0</div><div class="acc-drow-avg">0.1</div></div>
+                  <div class="acc-drow"><div class="acc-drow-tags"><span style="background:var(--red-light);color:var(--red);padding:1px 6px;border-radius:20px;font-size:9px;font-weight:700;">Absent</span><span style="font-size:9px;color:var(--text3);">only</span></div><div class="acc-drow-bw"><div class="acc-drow-bf" style="width:5.6%;background:var(--red);"></div></div><div class="acc-drow-count">12 · 5.6%</div><div class="acc-drow-avg">13.6</div><div class="acc-drow-avg">1.1</div><div class="acc-drow-avg">0.2</div></div>
+                  <div class="acc-drow"><div class="acc-drow-tags"><span style="background:var(--amber-light);color:var(--amber);padding:1px 6px;border-radius:20px;font-size:9px;font-weight:700;">Suspended</span><span style="font-size:9px;color:var(--text3);">only</span></div><div class="acc-drow-bw"><div class="acc-drow-bf" style="width:3.7%;background:var(--amber);"></div></div><div class="acc-drow-count">8 · 3.7%</div><div class="acc-drow-avg">7.5</div><div class="acc-drow-avg">1.3</div><div class="acc-drow-avg">1.9</div></div>
+                </div>
+              </div>
+              <div class="acc-exp-sec open" style="margin-top:4px;" id="ag7c"><div class="acc-exp-hdr" onclick="toggleGradeExp('ag7c')"><div><div class="acc-exp-title">Combinations</div><div class="acc-exp-hint">Coordinated response needed</div></div><div style="display:flex;align-items:center;gap:8px;"><div class="acc-exp-count">28 · 13.1%</div><div class="acc-exp-chev">▼</div></div></div>
+                <div class="acc-exp-body"><div class="acc-col-hd"><div class="acc-ch-tags"></div><div class="acc-ch-bar">% of grade</div><div class="acc-ch-count">Count · %</div><div class="acc-ch-col">Days</div><div class="acc-ch-col">Courses</div><div class="acc-ch-col">Incidents</div></div>
+                  <div class="acc-drow"><div class="acc-drow-tags"><span style="background:var(--red-light);color:var(--red);padding:1px 5px;border-radius:20px;font-size:9px;font-weight:700;">Abs</span><span style="font-size:9px;color:var(--text3);">+</span><span style="background:#E6F0FB;color:#1A5FAB;padding:1px 5px;border-radius:20px;font-size:9px;font-weight:700;">Fail</span></div><div class="acc-drow-bw"><div class="acc-drow-bf" style="width:6.1%;background:var(--primary);"></div></div><div class="acc-drow-count">13 · 6.1%</div><div class="acc-drow-avg">14.0</div><div class="acc-drow-avg">2.2</div><div class="acc-drow-avg">0.3</div></div>
+                  <div class="acc-drow"><div class="acc-drow-tags"><span style="background:var(--amber-light);color:var(--amber);padding:1px 5px;border-radius:20px;font-size:9px;font-weight:700;">Sus</span><span style="font-size:9px;color:var(--text3);">+</span><span style="background:#E6F0FB;color:#1A5FAB;padding:1px 5px;border-radius:20px;font-size:9px;font-weight:700;">Fail</span></div><div class="acc-drow-bw"><div class="acc-drow-bf" style="width:4.2%;background:var(--primary);"></div></div><div class="acc-drow-count">9 · 4.2%</div><div class="acc-drow-avg">10.6</div><div class="acc-drow-avg">2.0</div><div class="acc-drow-avg">3.2</div></div>
+                  <div class="acc-drow"><div class="acc-drow-tags"><span style="background:var(--red-light);color:var(--red);padding:1px 5px;border-radius:20px;font-size:9px;font-weight:700;">Abs</span><span style="font-size:9px;color:var(--text3);">+</span><span style="background:var(--amber-light);color:var(--amber);padding:1px 5px;border-radius:20px;font-size:9px;font-weight:700;">Sus</span></div><div class="acc-drow-bw"><div class="acc-drow-bf" style="width:2.8%;background:var(--primary);"></div></div><div class="acc-drow-count">6 · 2.8%</div><div class="acc-drow-avg">19.7</div><div class="acc-drow-avg">1.5</div><div class="acc-drow-avg">2.6</div></div>
+                </div>
+              </div>
+              <div class="acc-all3"><div class="acc-all3-left"><div class="acc-all3-lbl">All 3 flags</div><div class="acc-all3-n">14</div></div><div class="acc-all3-bw"><div class="acc-all3-bf" style="width:3.4%;"></div></div><div class="acc-all3-count">14 · 3.4%</div><div class="acc-all3-avg">22.8</div><div class="acc-all3-avg">3.3</div><div class="acc-all3-avg">3.7</div></div>
+            </div>
+          </div>
+
+          <!-- GRADE 8 -->
+          <div class="acc-grade-item alert open" id="ag8">
+            <div class="acc-grade-hdr" onclick="toggleGradeAcc('ag8')">
+              <div class="acc-g-title">Grade 8</div><div class="acc-g-meta">n = 188</div>
+              <div class="acc-g-track-wrap"><div class="acc-g-track"><div class="acc-g-fill" style="width:31.9%;background:var(--red);"></div></div><div class="acc-g-pct" style="color:var(--red);font-weight:600;">31.9% flagged</div></div>
+              <div class="acc-g-chev">▼</div>
+            </div>
+            <div class="acc-grade-body">
+              <div class="acc-exp-sec open" id="ag8s"><div class="acc-exp-hdr" onclick="toggleGradeExp('ag8s')"><div><div class="acc-exp-title">Single flag only</div><div class="acc-exp-hint">Tailored single response</div></div><div style="display:flex;align-items:center;gap:8px;"><div class="acc-exp-count">60 · 31.9%</div><div class="acc-exp-chev">▼</div></div></div>
+                <div class="acc-exp-body"><div class="acc-col-hd"><div class="acc-ch-tags"></div><div class="acc-ch-bar">% of grade</div><div class="acc-ch-count">Count · %</div><div class="acc-ch-col">Days</div><div class="acc-ch-col">Courses</div><div class="acc-ch-col">Incidents</div></div>
+                  <div class="acc-drow"><div class="acc-drow-tags"><span style="background:#EAF3DE;color:#3B6D11;padding:1px 6px;border-radius:20px;font-size:9px;font-weight:700;">Fail math</span><span style="font-size:9px;color:var(--text3);">only</span></div><div class="acc-drow-bw"><div class="acc-drow-bf" style="width:11.2%;background:#3B6D11;"></div></div><div class="acc-drow-count">21 · 11.2%</div><div class="acc-drow-avg">6.4</div><div class="acc-drow-avg">1.0</div><div class="acc-drow-avg">0.2</div></div>
+                  <div class="acc-drow"><div class="acc-drow-tags"><span style="background:#E6F0FB;color:#1A5FAB;padding:1px 6px;border-radius:20px;font-size:9px;font-weight:700;">Fail Eng.</span><span style="font-size:9px;color:var(--text3);">only</span></div><div class="acc-drow-bw"><div class="acc-drow-bf" style="width:9.0%;background:#1A5FAB;"></div></div><div class="acc-drow-count">17 · 9.0%</div><div class="acc-drow-avg">6.1</div><div class="acc-drow-avg">1.0</div><div class="acc-drow-avg">0.2</div></div>
+                  <div class="acc-drow"><div class="acc-drow-tags"><span style="background:var(--red-light);color:var(--red);padding:1px 6px;border-radius:20px;font-size:9px;font-weight:700;">Absent</span><span style="font-size:9px;color:var(--text3);">only</span></div><div class="acc-drow-bw"><div class="acc-drow-bf" style="width:7.4%;background:var(--red);"></div></div><div class="acc-drow-count">14 · 7.4%</div><div class="acc-drow-avg">15.8</div><div class="acc-drow-avg">1.2</div><div class="acc-drow-avg">0.3</div></div>
+                  <div class="acc-drow"><div class="acc-drow-tags"><span style="background:var(--amber-light);color:var(--amber);padding:1px 6px;border-radius:20px;font-size:9px;font-weight:700;">Suspended</span><span style="font-size:9px;color:var(--text3);">only</span></div><div class="acc-drow-bw"><div class="acc-drow-bf" style="width:4.3%;background:var(--amber);"></div></div><div class="acc-drow-count">8 · 4.3%</div><div class="acc-drow-avg">8.7</div><div class="acc-drow-avg">1.4</div><div class="acc-drow-avg">2.2</div></div>
+                </div>
+              </div>
+              <div class="acc-exp-sec open" style="margin-top:4px;" id="ag8c"><div class="acc-exp-hdr" onclick="toggleGradeExp('ag8c')"><div><div class="acc-exp-title">Combinations</div><div class="acc-exp-hint">Coordinated response needed</div></div><div style="display:flex;align-items:center;gap:8px;"><div class="acc-exp-count">34 · 18.1%</div><div class="acc-exp-chev">▼</div></div></div>
+                <div class="acc-exp-body"><div class="acc-col-hd"><div class="acc-ch-tags"></div><div class="acc-ch-bar">% of grade</div><div class="acc-ch-count">Count · %</div><div class="acc-ch-col">Days</div><div class="acc-ch-col">Courses</div><div class="acc-ch-col">Incidents</div></div>
+                  <div class="acc-drow"><div class="acc-drow-tags"><span style="background:var(--red-light);color:var(--red);padding:1px 5px;border-radius:20px;font-size:9px;font-weight:700;">Abs</span><span style="font-size:9px;color:var(--text3);">+</span><span style="background:#E6F0FB;color:#1A5FAB;padding:1px 5px;border-radius:20px;font-size:9px;font-weight:700;">Fail</span></div><div class="acc-drow-bw"><div class="acc-drow-bf" style="width:7.9%;background:var(--primary);"></div></div><div class="acc-drow-count">15 · 7.9%</div><div class="acc-drow-avg">16.4</div><div class="acc-drow-avg">2.6</div><div class="acc-drow-avg">0.4</div></div>
+                  <div class="acc-drow"><div class="acc-drow-tags"><span style="background:var(--amber-light);color:var(--amber);padding:1px 5px;border-radius:20px;font-size:9px;font-weight:700;">Sus</span><span style="font-size:9px;color:var(--text3);">+</span><span style="background:#E6F0FB;color:#1A5FAB;padding:1px 5px;border-radius:20px;font-size:9px;font-weight:700;">Fail</span></div><div class="acc-drow-bw"><div class="acc-drow-bf" style="width:5.3%;background:var(--primary);"></div></div><div class="acc-drow-count">10 · 5.3%</div><div class="acc-drow-avg">11.8</div><div class="acc-drow-avg">2.2</div><div class="acc-drow-avg">3.6</div></div>
+                  <div class="acc-drow"><div class="acc-drow-tags"><span style="background:var(--red-light);color:var(--red);padding:1px 5px;border-radius:20px;font-size:9px;font-weight:700;">Abs</span><span style="font-size:9px;color:var(--text3);">+</span><span style="background:var(--amber-light);color:var(--amber);padding:1px 5px;border-radius:20px;font-size:9px;font-weight:700;">Sus</span></div><div class="acc-drow-bw"><div class="acc-drow-bf" style="width:4.8%;background:var(--primary);"></div></div><div class="acc-drow-count">9 · 4.8%</div><div class="acc-drow-avg">22.1</div><div class="acc-drow-avg">1.7</div><div class="acc-drow-avg">3.0</div></div>
+                </div>
+              </div>
+              <div class="acc-all3"><div class="acc-all3-left"><div class="acc-all3-lbl">All 3 flags</div><div class="acc-all3-n">26</div></div><div class="acc-all3-bw"><div class="acc-all3-bf" style="width:13.8%;"></div></div><div class="acc-all3-count">26 · 13.8%</div><div class="acc-all3-avg">27.4</div><div class="acc-all3-avg">4.0</div><div class="acc-all3-avg">4.5</div></div>
+            </div>
+          </div>
+
+          <!-- GRADE 9 -->
+          <div class="acc-grade-item" id="ag9">
+            <div class="acc-grade-hdr" onclick="toggleGradeAcc('ag9')">
+              <div class="acc-g-title">Grade 9</div><div class="acc-g-meta">n = 247</div>
+              <div class="acc-g-track-wrap"><div class="acc-g-track"><div class="acc-g-fill" style="width:21.1%;background:#4A90D9;"></div></div><div class="acc-g-pct">21.1% flagged</div></div>
+              <div class="acc-g-chev">▼</div>
+            </div>
+            <div class="acc-grade-body">
+              <div class="acc-exp-sec" id="ag9s"><div class="acc-exp-hdr" onclick="toggleGradeExp('ag9s')"><div><div class="acc-exp-title">Single flag only</div><div class="acc-exp-hint">Tailored single response</div></div><div style="display:flex;align-items:center;gap:8px;"><div class="acc-exp-count">66 · 26.7%</div><div class="acc-exp-chev">▼</div></div></div>
+                <div class="acc-exp-body"><div class="acc-col-hd"><div class="acc-ch-tags"></div><div class="acc-ch-bar">% of grade</div><div class="acc-ch-count">Count · %</div><div class="acc-ch-col">Days</div><div class="acc-ch-col">Courses</div><div class="acc-ch-col">Incidents</div></div>
+                  <div class="acc-drow"><div class="acc-drow-tags"><span style="background:#EAF3DE;color:#3B6D11;padding:1px 6px;border-radius:20px;font-size:9px;font-weight:700;">Fail math</span><span style="font-size:9px;color:var(--text3);">only</span></div><div class="acc-drow-bw"><div class="acc-drow-bf" style="width:9.7%;background:#3B6D11;"></div></div><div class="acc-drow-count">24 · 9.7%</div><div class="acc-drow-avg">6.0</div><div class="acc-drow-avg">1.0</div><div class="acc-drow-avg">0.2</div></div>
+                  <div class="acc-drow"><div class="acc-drow-tags"><span style="background:#E6F0FB;color:#1A5FAB;padding:1px 6px;border-radius:20px;font-size:9px;font-weight:700;">Fail Eng.</span><span style="font-size:9px;color:var(--text3);">only</span></div><div class="acc-drow-bw"><div class="acc-drow-bf" style="width:7.7%;background:#1A5FAB;"></div></div><div class="acc-drow-count">19 · 7.7%</div><div class="acc-drow-avg">5.6</div><div class="acc-drow-avg">1.0</div><div class="acc-drow-avg">0.1</div></div>
+                  <div class="acc-drow"><div class="acc-drow-tags"><span style="background:var(--red-light);color:var(--red);padding:1px 6px;border-radius:20px;font-size:9px;font-weight:700;">Absent</span><span style="font-size:9px;color:var(--text3);">only</span></div><div class="acc-drow-bw"><div class="acc-drow-bf" style="width:5.3%;background:var(--red);"></div></div><div class="acc-drow-count">13 · 5.3%</div><div class="acc-drow-avg">14.4</div><div class="acc-drow-avg">1.1</div><div class="acc-drow-avg">0.3</div></div>
+                  <div class="acc-drow"><div class="acc-drow-tags"><span style="background:var(--amber-light);color:var(--amber);padding:1px 6px;border-radius:20px;font-size:9px;font-weight:700;">Suspended</span><span style="font-size:9px;color:var(--text3);">only</span></div><div class="acc-drow-bw"><div class="acc-drow-bf" style="width:4.0%;background:var(--amber);"></div></div><div class="acc-drow-count">10 · 4.0%</div><div class="acc-drow-avg">7.8</div><div class="acc-drow-avg">1.3</div><div class="acc-drow-avg">1.9</div></div>
+                </div>
+              </div>
+              <div class="acc-exp-sec" style="margin-top:4px;" id="ag9c"><div class="acc-exp-hdr" onclick="toggleGradeExp('ag9c')"><div><div class="acc-exp-title">Combinations</div><div class="acc-exp-hint">Coordinated response needed</div></div><div style="display:flex;align-items:center;gap:8px;"><div class="acc-exp-count">34 · 13.8%</div><div class="acc-exp-chev">▼</div></div></div>
+                <div class="acc-exp-body"><div class="acc-col-hd"><div class="acc-ch-tags"></div><div class="acc-ch-bar">% of grade</div><div class="acc-ch-count">Count · %</div><div class="acc-ch-col">Days</div><div class="acc-ch-col">Courses</div><div class="acc-ch-col">Incidents</div></div>
+                  <div class="acc-drow"><div class="acc-drow-tags"><span style="background:var(--red-light);color:var(--red);padding:1px 5px;border-radius:20px;font-size:9px;font-weight:700;">Abs</span><span style="font-size:9px;color:var(--text3);">+</span><span style="background:#E6F0FB;color:#1A5FAB;padding:1px 5px;border-radius:20px;font-size:9px;font-weight:700;">Fail</span></div><div class="acc-drow-bw"><div class="acc-drow-bf" style="width:6.5%;background:var(--primary);"></div></div><div class="acc-drow-count">16 · 6.5%</div><div class="acc-drow-avg">14.8</div><div class="acc-drow-avg">2.3</div><div class="acc-drow-avg">0.4</div></div>
+                  <div class="acc-drow"><div class="acc-drow-tags"><span style="background:var(--amber-light);color:var(--amber);padding:1px 5px;border-radius:20px;font-size:9px;font-weight:700;">Sus</span><span style="font-size:9px;color:var(--text3);">+</span><span style="background:#E6F0FB;color:#1A5FAB;padding:1px 5px;border-radius:20px;font-size:9px;font-weight:700;">Fail</span></div><div class="acc-drow-bw"><div class="acc-drow-bf" style="width:4.0%;background:var(--primary);"></div></div><div class="acc-drow-count">10 · 4.0%</div><div class="acc-drow-avg">11.1</div><div class="acc-drow-avg">2.1</div><div class="acc-drow-avg">3.3</div></div>
+                  <div class="acc-drow"><div class="acc-drow-tags"><span style="background:var(--red-light);color:var(--red);padding:1px 5px;border-radius:20px;font-size:9px;font-weight:700;">Abs</span><span style="font-size:9px;color:var(--text3);">+</span><span style="background:var(--amber-light);color:var(--amber);padding:1px 5px;border-radius:20px;font-size:9px;font-weight:700;">Sus</span></div><div class="acc-drow-bw"><div class="acc-drow-bf" style="width:3.2%;background:var(--primary);"></div></div><div class="acc-drow-count">8 · 3.2%</div><div class="acc-drow-avg">20.4</div><div class="acc-drow-avg">1.6</div><div class="acc-drow-avg">2.8</div></div>
+                </div>
+              </div>
+              <div class="acc-all3"><div class="acc-all3-left"><div class="acc-all3-lbl">All 3 flags</div><div class="acc-all3-n">18</div></div><div class="acc-all3-bw"><div class="acc-all3-bf" style="width:7.3%;"></div></div><div class="acc-all3-count">18 · 7.3%</div><div class="acc-all3-avg">24.2</div><div class="acc-all3-avg">3.6</div><div class="acc-all3-avg">4.0</div></div>
+            </div>
+          </div>
+
+        </div>
+        <div class="mc-actions" style="max-width:84%;margin-top:4px;"><div class="mca">+ Add all to report</div><div class="mca">Export CSV</div></div>`);
+
+      appendMsg(container, 'ai', 'Across all four grades, 389 students carry at least one risk flag. Two patterns stand out. The Grade 6→7 transition is where course failures jump most sharply — worth examining what changes between those years. Grade 8 carries the heaviest concentration of risk across every indicator, with 26 students flagged on all three simultaneously — averaging over 27 days missed, failing 4 courses, and nearly 5 incidents. That profile calls for immediate, coordinated support. Where would you like to go from here?');
+
+      appendRaw(container, `
+        <div class="scaffold-opts">
+          <div class="sopt" onclick="continueConvo('all3flags')">Show me the students with all 3 flags ↗</div>
+          <div class="sopt" onclick="continueConvo('intersection')">Run subgroup analysis ↗</div>
+          <div class="sopt" onclick="continueConvo('sel')">Add SEL / well-being layer ↗</div>
+          <div class="sopt" onclick="runDemo('brainstorm')">Brainstorm interventions ↗</div>
+        </div>`);
+      scrollBottom();
+    }, 900);
+  }
+
+  else if(topic === 'all3flags') {
+    appendMsg(container, 'user', 'Show me the list of students with all 3 risk flags — attendance issues, behavior incidents, and academic failures');
+    appendMsg(container, 'ai-thinking', '');
+    setTimeout(() => {
+      removeThinking(container);
+      appendRaw(container, `<div class="src-tag"><span class="st data">Your data</span></div>`);
+      appendMsg(container, 'ai', 'Here are all <strong>67 students with all 3 flags active</strong> school-wide. Sorted by severely absent (≥20%) first — these students are most at risk.');
+
+      appendRaw(container, `
+        <div class="student-table-wrap">
+          <div class="st-filters">
+            <div class="st-filter-label">All students with all 3 flags</div>
+            <div class="st-pills">
+              <div class="st-pill on">Total: 67</div>
+              <div class="st-pill">Grade 6: 9</div>
+              <div class="st-pill">Grade 7: 14</div>
+              <div class="st-pill active">Grade 8: 26 ⚠</div>
+              <div class="st-pill">Grade 9: 18</div>
+            </div>
+            <div class="st-search">Search by student ID…</div>
+          </div>
+
+          <div class="st-grade-header">Grade 8 <span class="st-grade-sub">Severely absent (≥20%) · 26 students</span></div>
+          <div class="st-table-scroll">
+          <table class="st-table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>% Absent</th>
+                <th>Absences</th>
+                <th>Suspensions</th>
+                <th>Eng</th>
+                <th>Math</th>
+                <th>Low SEL</th>
+                <th>Sev. Ed.</th>
+                <th>Coverage</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr class="st-row st-row-crit">
+                <td class="st-id">3232</td><td class="st-abs-pct">40.0%</td><td>28</td><td class="st-susp">2</td>
+                <td><span class="st-tag fail">Fail</span></td><td><span class="st-tag fail">Fail</span></td><td><span class="st-tag warn">Yes</span></td><td><span class="st-tag warn">Yes</span></td><td><span class="st-cov cov-0">No</span></td>
+              </tr>
+              <tr class="st-row st-row-crit">
+                <td class="st-id">6017</td><td class="st-abs-pct">39.6%</td><td>32</td><td class="st-susp">4</td>
+                <td><span class="st-tag fail">Fail</span></td><td><span class="st-tag fail">Fail</span></td><td><span class="st-tag warn">Yes</span></td><td><span class="st-tag warn">Yes</span></td><td><span class="st-cov cov-0">No</span></td>
+              </tr>
+              <tr class="st-row st-row-crit">
+                <td class="st-id">1346</td><td class="st-abs-pct">33.0%</td><td>24</td><td class="st-susp">2</td>
+                <td><span class="st-tag fail">Fail</span></td><td><span class="st-tag pass">Pass</span></td><td><span class="st-tag warn">Yes</span></td><td><span class="st-tag warn">Yes</span></td><td><span class="st-cov cov-0">No</span></td>
+              </tr>
+              <tr class="st-row st-row-crit">
+                <td class="st-id">M624</td><td class="st-abs-pct">33.0%</td><td>24</td><td class="st-susp">1</td>
+                <td><span class="st-tag pass">Pass</span></td><td><span class="st-tag fail">Fail</span></td><td><span class="st-tag warn">Yes</span></td><td><span class="st-tag warn">Yes</span></td><td><span class="st-cov cov-1">Partial</span></td>
+              </tr>
+              <tr class="st-row st-row-crit">
+                <td class="st-id">K629</td><td class="st-abs-pct">31.5%</td><td>23</td><td class="st-susp">3</td>
+                <td><span class="st-tag fail">Fail</span></td><td><span class="st-tag fail">Fail</span></td><td><span class="st-tag warn">Yes</span></td><td><span class="st-tag warn">Yes</span></td><td><span class="st-cov cov-0">No</span></td>
+              </tr>
+              <tr class="st-row">
+                <td class="st-id">S0</td><td class="st-abs-pct">29.5%</td><td>21</td><td class="st-susp">2</td>
+                <td><span class="st-tag fail">Fail</span></td><td><span class="st-tag pass">Pass</span></td><td><span class="st-tag">No</span></td><td><span class="st-tag warn">Yes</span></td><td><span class="st-cov cov-1">Partial</span></td>
+              </tr>
+              <tr class="st-row">
+                <td class="st-id">S6</td><td class="st-abs-pct">27.4%</td><td>19</td><td class="st-susp">1</td>
+                <td><span class="st-tag fail">Fail</span></td><td><span class="st-tag fail">Fail</span></td><td><span class="st-tag warn">Yes</span></td><td><span class="st-tag">No</span></td><td><span class="st-cov cov-1">Partial</span></td>
+              </tr>
+              <tr class="st-row">
+                <td class="st-id">1822</td><td class="st-abs-pct">26.0%</td><td>18</td><td class="st-susp">1</td>
+                <td><span class="st-tag pass">Pass</span></td><td><span class="st-tag fail">Fail</span></td><td><span class="st-tag warn">Yes</span></td><td><span class="st-tag">No</span></td><td><span class="st-cov cov-2">Yes</span></td>
+              </tr>
+              <tr class="st-row-more">
+                <td colspan="9" style="text-align:center;padding:10px;font-size:12px;color:var(--primary);cursor:pointer;font-weight:600;">Show 18 more Grade 8 students ↓</td>
+              </tr>
+            </tbody>
+          </table>
+          </div>
+
+          <div class="st-grade-header" style="margin-top:12px;">Grade 9 <span class="st-grade-sub">18 students with all 3 flags</span></div>
+          <div style="font-size:12px;color:var(--text3);padding:10px 12px;background:var(--bg2);border-radius:var(--radius);cursor:pointer;font-weight:500;">Click to expand Grade 9 students ↓</div>
+
+          <div class="mc-actions" style="margin-top:10px;"><div class="mca">+ Add to report</div><div class="mca">Export CSV</div><div class="mca">Create action plan for this group ↗</div></div>
+        </div>`);
+
+      appendMsg(container, 'ai', 'The 5 students at the top (IDs 3232, 6017, 1346, M624, K629) are missing 30–40% of school days — that\'s more than 1 in 3 school days absent. <strong>None of them have a trusted adult assigned</strong> (Coverage = No). This is the most urgent priority group.');
+
+      appendRaw(container, `
+        <div class="sc-label">What would you like to do with this list?</div>
+        <div class="scaffold-opts">
+          <div class="sopt" onclick="continueConvo('intersection')">Run subgroup analysis ↗</div>
+          <div class="sopt" onclick="runDemo('brainstorm')">What interventions work for this group? ↗</div>
+          <div class="sopt">Create an action plan for these 67 students ↗</div>
+          <div class="sopt" onclick="continueConvo('sel')">Run SEL analysis for this group ↗</div>
+        </div>`);
+      scrollBottom();
+    }, 800);
+  }
+
+  else if(topic === 'intersection') {
+    appendMsg(container, 'user', 'Run subgroup analysis');
+    appendMsg(container, 'ai-thinking', '');
+    setTimeout(() => {
+      removeThinking(container);
+      appendMsg(container, 'ai', 'I found demographic variables in your dataset. Select a subgroup to examine how risk is distributed across student groups.');
+
+      appendDivider(container, 'Subgroup analysis — 847 students');
+
+      appendRaw(container, `
+        <style>
+          .sg-tabs{display:flex;gap:5px;margin-bottom:12px;flex-wrap:wrap;}
+          .sg-tab{padding:5px 13px;border-radius:20px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid var(--border2);color:var(--text2);background:var(--surface);transition:all .15s;font-family:'DM Sans',sans-serif;}
+          .sg-tab.active{background:var(--navy);color:white;border-color:var(--navy);}
+          .sg-panel{display:none;}
+          .sg-panel.active{display:block;}
+          .equity-flag{background:var(--red-light);border:1px solid #F0B8B5;border-radius:8px;padding:9px 12px;display:flex;gap:8px;align-items:flex-start;margin-bottom:10px;}
+          .eq-dot{width:7px;height:7px;border-radius:50%;background:var(--red);flex-shrink:0;margin-top:3px;}
+          .eq-text{font-size:11px;color:var(--red);line-height:1.5;}
+          .sg-acc-item{background:var(--surface);border-radius:var(--radius-lg);margin-bottom:5px;border:1px solid var(--border);overflow:hidden;}
+          .sg-acc-item.open{border-color:var(--primary-mid);}
+          .sg-acc-hdr{display:flex;align-items:center;gap:10px;padding:9px 13px;cursor:pointer;user-select:none;}
+          .sg-acc-hdr:hover{background:var(--bg);}
+          .sg-g-title{font-size:13px;font-weight:600;color:var(--text);width:140px;flex-shrink:0;}
+          .sg-g-meta{font-size:10px;color:var(--text3);flex-shrink:0;}
+          .sg-g-track-wrap{flex:1;display:flex;align-items:center;gap:7px;}
+          .sg-g-track{flex:1;max-width:130px;background:var(--bg2);border-radius:3px;height:7px;overflow:hidden;}
+          .sg-g-fill{height:100%;border-radius:3px;}
+          .sg-g-pct{font-size:11px;font-weight:500;color:var(--text);}
+          .sg-g-chev{color:var(--text3);font-size:10px;flex-shrink:0;transition:transform .2s;}
+          .sg-acc-item.open .sg-g-chev{transform:rotate(180deg);}
+          .sg-acc-body{display:none;padding:0 13px 11px;}
+          .sg-acc-item.open .sg-acc-body{display:block;}
+          .sg-exp-sec{margin-bottom:4px;}
+          .sg-exp-hdr{display:flex;align-items:center;justify-content:space-between;padding:6px 9px;background:var(--bg2);border-radius:7px;cursor:pointer;border:1px solid var(--border);}
+          .sg-exp-hdr:hover{background:var(--bg3);}
+          .sg-exp-sec.open .sg-exp-hdr{background:var(--primary-light);border-color:var(--primary-mid);border-radius:7px 7px 0 0;}
+          .sg-exp-title{font-size:11px;font-weight:500;color:var(--text);}
+          .sg-exp-hint{font-size:10px;color:var(--text3);}
+          .sg-exp-count{font-size:11px;font-weight:600;color:var(--text);font-family:'DM Mono',monospace;}
+          .sg-exp-chev{font-size:9px;color:var(--text3);transition:transform .2s;}
+          .sg-exp-sec.open .sg-exp-chev{transform:rotate(180deg);}
+          .sg-exp-body{display:none;padding:8px 10px;background:#F9FBFB;border:1px solid var(--primary-mid);border-top:none;border-radius:0 0 7px 7px;}
+          .sg-exp-sec.open .sg-exp-body{display:block;}
+          .sg-col-hd{display:flex;align-items:center;gap:6px;padding:0 2px 5px;border-bottom:1px solid var(--border);margin-bottom:5px;}
+          .sg-ch-tags{width:105px;flex-shrink:0;}
+          .sg-ch-bar{flex:1;font-size:9px;font-weight:500;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;}
+          .sg-ch-count{font-size:9px;font-weight:500;color:var(--text3);text-transform:uppercase;width:75px;text-align:right;flex-shrink:0;}
+          .sg-ch-col{font-size:9px;font-weight:500;color:var(--text3);text-transform:uppercase;width:48px;text-align:right;flex-shrink:0;}
+          .sg-drow{display:flex;align-items:center;gap:6px;margin-bottom:4px;padding:2px 3px;border-radius:5px;}
+          .sg-drow:hover{background:var(--bg2);}
+          .sg-drow-tags{display:flex;align-items:center;gap:3px;width:105px;flex-shrink:0;}
+          .sg-drow-bw{flex:1;background:var(--bg2);border-radius:2px;height:10px;overflow:hidden;}
+          .sg-drow-bf{height:100%;border-radius:2px;}
+          .sg-drow-count{font-size:10px;color:var(--text2);font-family:'DM Mono',monospace;white-space:nowrap;flex-shrink:0;width:75px;text-align:right;}
+          .sg-drow-avg{width:48px;flex-shrink:0;text-align:right;font-size:10px;font-weight:500;color:var(--text);font-family:'DM Mono',monospace;}
+          .sg-all3{border-radius:7px;padding:7px 10px;margin-top:6px;border:1px solid #F0B8B5;background:var(--red-light);display:flex;align-items:center;gap:8px;}
+          .sg-all3-left{flex-shrink:0;}
+          .sg-all3-lbl{font-size:9px;color:var(--text3);margin-bottom:1px;}
+          .sg-all3-n{font-size:17px;font-weight:600;color:var(--red);line-height:1;}
+          .sg-all3-bw{flex:1;background:#F0C8C4;border-radius:2px;height:10px;overflow:hidden;}
+          .sg-all3-bf{height:100%;border-radius:2px;background:var(--red);}
+          .sg-all3-count{font-size:10px;color:var(--red);font-family:'DM Mono',monospace;width:75px;text-align:right;flex-shrink:0;font-weight:600;}
+          .sg-all3-avg{width:48px;flex-shrink:0;text-align:right;font-size:10px;font-weight:600;color:var(--red);font-family:'DM Mono',monospace;}
+        </style>
+
+        <div class="sg-tabs">
+          <div class="sg-tab active" onclick="switchSgTab('race')">Race / ethnicity</div>
+          <div class="sg-tab" onclick="switchSgTab('gender')">Gender</div>
+          <div class="sg-tab" onclick="switchSgTab('sped')">SPED status</div>
+          <div class="sg-tab" onclick="switchSgTab('ell')">ELL status</div>
+        </div>
+
+        <!-- RACE/ETHNICITY PANEL -->
+        <div class="sg-panel active" id="sg-race">
+          <div class="equity-flag">
+            <div class="eq-dot"></div>
+            <div class="eq-text"><strong>Equity flag:</strong> Black students represent 24% of the school but 51% of students with all 3 flags. Hispanic students are also overrepresented at 19% of school but 28% of all 3 flags.</div>
+          </div>
+
+          <!-- Black students -->
+          <div class="sg-acc-item open" id="sg-black">
+            <div class="sg-acc-hdr" onclick="toggleSgAcc('sg-black')">
+              <div class="sg-g-title">Black students</div><div class="sg-g-meta">n = 203</div>
+              <div class="sg-g-track-wrap"><div class="sg-g-track"><div class="sg-g-fill" style="width:41.9%;background:var(--red);"></div></div><div class="sg-g-pct" style="color:var(--red);font-weight:600;">41.9% flagged</div></div>
+              <div class="sg-g-chev">▼</div>
+            </div>
+            <div class="sg-acc-body">
+              <div class="sg-exp-sec open" id="sg-black-s"><div class="sg-exp-hdr" onclick="toggleSgExp('sg-black-s')"><div><div class="sg-exp-title">Single flag only</div><div class="sg-exp-hint">Tailored single response</div></div><div style="display:flex;align-items:center;gap:8px;"><div class="sg-exp-count">52 · 25.6%</div><div class="sg-exp-chev">▼</div></div></div>
+                <div class="sg-exp-body"><div class="sg-col-hd"><div class="sg-ch-tags"></div><div class="sg-ch-bar">% of group</div><div class="sg-ch-count">Count · %</div><div class="sg-ch-col">Days</div><div class="sg-ch-col">Courses</div><div class="sg-ch-col">Incidents</div></div>
+                  <div class="sg-drow"><div class="sg-drow-tags"><span style="background:#EAF3DE;color:#3B6D11;padding:1px 6px;border-radius:20px;font-size:9px;font-weight:700;">Fail math</span><span style="font-size:9px;color:var(--text3);">only</span></div><div class="sg-drow-bw"><div class="sg-drow-bf" style="width:11.3%;background:#3B6D11;"></div></div><div class="sg-drow-count">23 · 11.3%</div><div class="sg-drow-avg">6.8</div><div class="sg-drow-avg">1.0</div><div class="sg-drow-avg">0.3</div></div>
+                  <div class="sg-drow"><div class="sg-drow-tags"><span style="background:#E6F0FB;color:#1A5FAB;padding:1px 6px;border-radius:20px;font-size:9px;font-weight:700;">Fail Eng.</span><span style="font-size:9px;color:var(--text3);">only</span></div><div class="sg-drow-bw"><div class="sg-drow-bf" style="width:8.9%;background:#1A5FAB;"></div></div><div class="sg-drow-count">18 · 8.9%</div><div class="sg-drow-avg">6.1</div><div class="sg-drow-avg">1.0</div><div class="sg-drow-avg">0.2</div></div>
+                  <div class="sg-drow"><div class="sg-drow-tags"><span style="background:var(--red-light);color:var(--red);padding:1px 6px;border-radius:20px;font-size:9px;font-weight:700;">Absent</span><span style="font-size:9px;color:var(--text3);">only</span></div><div class="sg-drow-bw"><div class="sg-drow-bf" style="width:5.4%;background:var(--red);"></div></div><div class="sg-drow-count">11 · 5.4%</div><div class="sg-drow-avg">15.2</div><div class="sg-drow-avg">1.2</div><div class="sg-drow-avg">0.4</div></div>
+                  <div class="sg-drow"><div class="sg-drow-tags"><span style="background:var(--amber-light);color:var(--amber);padding:1px 6px;border-radius:20px;font-size:9px;font-weight:700;">Suspended</span><span style="font-size:9px;color:var(--text3);">only</span></div><div class="sg-drow-bw"><div class="sg-drow-bf" style="width:5.4%;background:var(--amber);"></div></div><div class="sg-drow-count">11 · 5.4% </div><div class="sg-drow-avg">9.4</div><div class="sg-drow-avg">1.5</div><div class="sg-drow-avg">2.6</div></div>
+                </div>
+              </div>
+              <div class="sg-exp-sec open" style="margin-top:4px;" id="sg-black-c"><div class="sg-exp-hdr" onclick="toggleSgExp('sg-black-c')"><div><div class="sg-exp-title">Combinations</div><div class="sg-exp-hint">Coordinated response needed</div></div><div style="display:flex;align-items:center;gap:8px;"><div class="sg-exp-count">33 · 16.3%</div><div class="sg-exp-chev">▼</div></div></div>
+                <div class="sg-exp-body"><div class="sg-col-hd"><div class="sg-ch-tags"></div><div class="sg-ch-bar">% of group</div><div class="sg-ch-count">Count · %</div><div class="sg-ch-col">Days</div><div class="sg-ch-col">Courses</div><div class="sg-ch-col">Incidents</div></div>
+                  <div class="sg-drow"><div class="sg-drow-tags"><span style="background:var(--red-light);color:var(--red);padding:1px 5px;border-radius:20px;font-size:9px;font-weight:700;">Abs</span><span style="font-size:9px;color:var(--text3);">+</span><span style="background:#E6F0FB;color:#1A5FAB;padding:1px 5px;border-radius:20px;font-size:9px;font-weight:700;">Fail</span></div><div class="sg-drow-bw"><div class="sg-drow-bf" style="width:8.4%;background:var(--primary);"></div></div><div class="sg-drow-count">17 · 8.4%</div><div class="sg-drow-avg">16.8</div><div class="sg-drow-avg">2.6</div><div class="sg-drow-avg">0.5</div></div>
+                  <div class="sg-drow"><div class="sg-drow-tags"><span style="background:var(--amber-light);color:var(--amber);padding:1px 5px;border-radius:20px;font-size:9px;font-weight:700;">Sus</span><span style="font-size:9px;color:var(--text3);">+</span><span style="background:#E6F0FB;color:#1A5FAB;padding:1px 5px;border-radius:20px;font-size:9px;font-weight:700;">Fail</span></div><div class="sg-drow-bw"><div class="sg-drow-bf" style="width:5.9%;background:var(--primary);"></div></div><div class="sg-drow-count">12 · 5.9%</div><div class="sg-drow-avg">12.1</div><div class="sg-drow-avg">2.3</div><div class="sg-drow-avg">3.8</div></div>
+                  <div class="sg-drow"><div class="sg-drow-tags"><span style="background:var(--red-light);color:var(--red);padding:1px 5px;border-radius:20px;font-size:9px;font-weight:700;">Abs</span><span style="font-size:9px;color:var(--text3);">+</span><span style="background:var(--amber-light);color:var(--amber);padding:1px 5px;border-radius:20px;font-size:9px;font-weight:700;">Sus</span></div><div class="sg-drow-bw"><div class="sg-drow-bf" style="width:2.0%;background:var(--primary);"></div></div><div class="sg-drow-count">4 · 2.0%</div><div class="sg-drow-avg">22.4</div><div class="sg-drow-avg">1.8</div><div class="sg-drow-avg">3.2</div></div>
+                </div>
+              </div>
+              <div class="sg-all3"><div class="sg-all3-left"><div class="sg-all3-lbl">All 3 flags</div><div class="sg-all3-n">34</div></div><div class="sg-all3-bw"><div class="sg-all3-bf" style="width:16.7%;"></div></div><div class="sg-all3-count">34 · 16.7%</div><div class="sg-all3-avg">26.8</div><div class="sg-all3-avg">3.9</div><div class="sg-all3-avg">4.4</div></div>
+            </div>
+          </div>
+
+          <!-- Hispanic -->
+          <div class="sg-acc-item" id="sg-hisp">
+            <div class="sg-acc-hdr" onclick="toggleSgAcc('sg-hisp')">
+              <div class="sg-g-title">Hispanic students</div><div class="sg-g-meta">n = 161</div>
+              <div class="sg-g-track-wrap"><div class="sg-g-track"><div class="sg-g-fill" style="width:28.6%;background:var(--amber);"></div></div><div class="sg-g-pct">28.6% flagged</div></div>
+              <div class="sg-g-chev">▼</div>
+            </div>
+            <div class="sg-acc-body"><div style="font-size:11px;color:var(--text3);padding:4px 0;">Same layout as above</div></div>
+          </div>
+
+          <!-- White -->
+          <div class="sg-acc-item" id="sg-white">
+            <div class="sg-acc-hdr" onclick="toggleSgAcc('sg-white')">
+              <div class="sg-g-title">White students</div><div class="sg-g-meta">n = 310</div>
+              <div class="sg-g-track-wrap"><div class="sg-g-track"><div class="sg-g-fill" style="width:14.2%;background:#4A90D9;"></div></div><div class="sg-g-pct">14.2% flagged</div></div>
+              <div class="sg-g-chev">▼</div>
+            </div>
+            <div class="sg-acc-body"><div style="font-size:11px;color:var(--text3);padding:4px 0;">Same layout as above</div></div>
+          </div>
+
+          <!-- Asian -->
+          <div class="sg-acc-item" id="sg-asian">
+            <div class="sg-acc-hdr" onclick="toggleSgAcc('sg-asian')">
+              <div class="sg-g-title">Asian students</div><div class="sg-g-meta">n = 117</div>
+              <div class="sg-g-track-wrap"><div class="sg-g-track"><div class="sg-g-fill" style="width:11.8%;background:#4A90D9;"></div></div><div class="sg-g-pct">11.8% flagged</div></div>
+              <div class="sg-g-chev">▼</div>
+            </div>
+            <div class="sg-acc-body"><div style="font-size:11px;color:var(--text3);padding:4px 0;">Same layout as above</div></div>
+          </div>
+        </div>
+
+        <!-- GENDER PANEL -->
+        <div class="sg-panel" id="sg-gender">
+          <div class="equity-flag">
+            <div class="eq-dot"></div>
+            <div class="eq-text"><strong>Equity flag:</strong> Male students represent 51% of the school but 68% of students with all 3 flags. Suspension-only flags are 3× higher for male students.</div>
+          </div>
+          <div class="sg-acc-item" id="sg-male">
+            <div class="sg-acc-hdr" onclick="toggleSgAcc('sg-male')">
+              <div class="sg-g-title">Male students</div><div class="sg-g-meta">n = 431</div>
+              <div class="sg-g-track-wrap"><div class="sg-g-track"><div class="sg-g-fill" style="width:29.2%;background:var(--amber);"></div></div><div class="sg-g-pct">29.2% flagged</div></div>
+              <div class="sg-g-chev">▼</div>
+            </div>
+            <div class="sg-acc-body"><div style="font-size:11px;color:var(--text3);padding:4px 0;">Same accordion layout as race tab</div></div>
+          </div>
+          <div class="sg-acc-item" id="sg-female">
+            <div class="sg-acc-hdr" onclick="toggleSgAcc('sg-female')">
+              <div class="sg-g-title">Female students</div><div class="sg-g-meta">n = 416</div>
+              <div class="sg-g-track-wrap"><div class="sg-g-track"><div class="sg-g-fill" style="width:18.3%;background:#4A90D9;"></div></div><div class="sg-g-pct">18.3% flagged</div></div>
+              <div class="sg-g-chev">▼</div>
+            </div>
+            <div class="sg-acc-body"><div style="font-size:11px;color:var(--text3);padding:4px 0;">Same accordion layout as race tab</div></div>
+          </div>
+        </div>
+
+        <!-- SPED PANEL -->
+        <div class="sg-panel" id="sg-sped">
+          <div class="equity-flag">
+            <div class="eq-dot"></div>
+            <div class="eq-text"><strong>Equity flag:</strong> Students with IEPs represent 14% of the school but 38% of all 3 flags. Course failure rates are 2.4× higher than non-SPED peers.</div>
+          </div>
+          <div class="sg-acc-item" id="sg-iep">
+            <div class="sg-acc-hdr" onclick="toggleSgAcc('sg-iep')">
+              <div class="sg-g-title">IEP students</div><div class="sg-g-meta">n = 118</div>
+              <div class="sg-g-track-wrap"><div class="sg-g-track"><div class="sg-g-fill" style="width:44.1%;background:var(--red);"></div></div><div class="sg-g-pct" style="color:var(--red);font-weight:600;">44.1% flagged</div></div>
+              <div class="sg-g-chev">▼</div>
+            </div>
+            <div class="sg-acc-body"><div style="font-size:11px;color:var(--text3);padding:4px 0;">Same accordion layout as race tab</div></div>
+          </div>
+          <div class="sg-acc-item" id="sg-504">
+            <div class="sg-acc-hdr" onclick="toggleSgAcc('sg-504')">
+              <div class="sg-g-title">504 students</div><div class="sg-g-meta">n = 54</div>
+              <div class="sg-g-track-wrap"><div class="sg-g-track"><div class="sg-g-fill" style="width:22.2%;background:var(--amber);"></div></div><div class="sg-g-pct">22.2% flagged</div></div>
+              <div class="sg-g-chev">▼</div>
+            </div>
+            <div class="sg-acc-body"><div style="font-size:11px;color:var(--text3);padding:4px 0;">Same accordion layout as race tab</div></div>
+          </div>
+          <div class="sg-acc-item" id="sg-nosped">
+            <div class="sg-acc-hdr" onclick="toggleSgAcc('sg-nosped')">
+              <div class="sg-g-title">No SPED</div><div class="sg-g-meta">n = 675</div>
+              <div class="sg-g-track-wrap"><div class="sg-g-track"><div class="sg-g-fill" style="width:16.4%;background:#4A90D9;"></div></div><div class="sg-g-pct">16.4% flagged</div></div>
+              <div class="sg-g-chev">▼</div>
+            </div>
+            <div class="sg-acc-body"><div style="font-size:11px;color:var(--text3);padding:4px 0;">Same accordion layout as race tab</div></div>
+          </div>
+        </div>
+
+        <!-- ELL PANEL -->
+        <div class="sg-panel" id="sg-ell">
+          <div class="equity-flag">
+            <div class="eq-dot"></div>
+            <div class="eq-text"><strong>Equity flag:</strong> ELL students represent 18% of the school but 31% of chronic absence flags. Course failure rates are comparable to non-ELL peers.</div>
+          </div>
+          <div class="sg-acc-item" id="sg-ell-yes">
+            <div class="sg-acc-hdr" onclick="toggleSgAcc('sg-ell-yes')">
+              <div class="sg-g-title">ELL students</div><div class="sg-g-meta">n = 152</div>
+              <div class="sg-g-track-wrap"><div class="sg-g-track"><div class="sg-g-fill" style="width:26.3%;background:var(--amber);"></div></div><div class="sg-g-pct">26.3% flagged</div></div>
+              <div class="sg-g-chev">▼</div>
+            </div>
+            <div class="sg-acc-body"><div style="font-size:11px;color:var(--text3);padding:4px 0;">Same accordion layout as race tab</div></div>
+          </div>
+          <div class="sg-acc-item" id="sg-ell-no">
+            <div class="sg-acc-hdr" onclick="toggleSgAcc('sg-ell-no')">
+              <div class="sg-g-title">Non-ELL students</div><div class="sg-g-meta">n = 695</div>
+              <div class="sg-g-track-wrap"><div class="sg-g-track"><div class="sg-g-fill" style="width:19.1%;background:#4A90D9;"></div></div><div class="sg-g-pct">19.1% flagged</div></div>
+              <div class="sg-g-chev">▼</div>
+            </div>
+            <div class="sg-acc-body"><div style="font-size:11px;color:var(--text3);padding:4px 0;">Same accordion layout as race tab</div></div>
+          </div>
+        </div>
+
+        <div class="mc-actions" style="max-width:84%;margin-top:8px;"><div class="mca">+ Add to report</div><div class="mca">Export CSV</div></div>`);
+
+      appendMsg(container, 'ai', 'The most significant disparity is in the <strong>race/ethnicity breakdown</strong> — Black students carry all 3 flags at nearly 4× the rate of White students (16.7% vs 4.4%). IEP students also show markedly higher risk at 44.1% flagged. These patterns suggest that intervention strategies need to be culturally responsive and account for systemic barriers, not just individual student behaviour.');
+
+      appendRaw(container, `
+        <div class="sc-label">What would you like to do next?</div>
+        <div class="scaffold-opts">
+          <div class="sopt" onclick="continueConvo('sel')">Run well-being analysis ↗</div>
+          <div class="sopt" onclick="continueConvo('all3flags')">Show me the all 3 flags student list ↗</div>
+          <div class="sopt" onclick="runDemo('brainstorm')">Brainstorm interventions ↗</div>
+        </div>`);
+      scrollBottom();
+    }, 900);
+  }
+
+  else if(topic === 'sel') {
+    appendMsg(container, 'user', 'Run the SEL factor analysis — compare at-risk and on-track students');
+    appendMsg(container, 'ai-thinking', '');
+    setTimeout(() => {
+      removeThinking(container);
+      appendDivider(container, 'Well-being analysis — school-wide');
+      appendRaw(container, `
+        <div class="sel-chart">
+          <div class="mc-title">Well-being factors: flagged vs on-track (847 students)</div>
+          <div class="sel-legend">
+            <div class="sel-leg-item"><div class="sel-leg-dot" style="background:var(--primary);"></div>On track (458)</div>
+            <div class="sel-leg-item"><div class="sel-leg-dot" style="background:var(--red);opacity:.75;"></div>Chronically absent (158)</div>
+            <div class="sel-leg-item"><div class="sel-leg-dot" style="background:var(--amber);opacity:.85;"></div>Suspended (88)</div>
+            <div class="sel-leg-item"><div class="sel-leg-dot" style="background:var(--navy-mid);opacity:.75;"></div>Failing courses (214)</div>
+          </div>
+          <div class="sel-row"><div class="sel-lbl">Sense of belonging</div><div class="sel-track"><div class="sel-bar ontrack" style="width:76%;"></div><div class="sel-bar atrisk" style="width:31%;top:13px;"></div></div></div>
+          <div class="sel-row"><div class="sel-lbl">Self-efficacy</div><div class="sel-track"><div class="sel-bar ontrack" style="width:71%;"></div><div class="sel-bar atrisk" style="width:28%;top:13px;"></div></div></div>
+          <div class="sel-row"><div class="sel-lbl">Self-management</div><div class="sel-track"><div class="sel-bar ontrack" style="width:68%;"></div><div class="sel-bar atrisk" style="width:36%;top:13px;"></div></div></div>
+          <div class="sel-row"><div class="sel-lbl">Growth mindset</div><div class="sel-track"><div class="sel-bar ontrack" style="width:64%;"></div><div class="sel-bar atrisk" style="width:40%;top:13px;"></div></div></div>
+          <div class="sel-row"><div class="sel-lbl">Social awareness</div><div class="sel-track"><div class="sel-bar ontrack" style="width:66%;"></div><div class="sel-bar atrisk" style="width:53%;top:13px;"></div></div></div>
+          <div class="mc-actions"><div class="mca">+ Add to report</div><div class="mca">Export PNG</div></div>
+        </div>`);
+      appendMsg(container, 'ai', 'The two largest SEL gaps are <strong>sense of belonging</strong> and <strong>self-efficacy</strong> — 45 and 43 percentage points below on-track peers. Social awareness is actually quite close between groups, suggesting at-risk students understand their social environment but feel they don\'t belong in it and can\'t succeed academically. Interventions focused on identity, connection, and small academic wins will have the most leverage.');
+      appendRaw(container, `
+        <div class="sc-label">What would you like to do next?</div>
+        <div class="scaffold-opts">
+          <div class="sopt" onclick="runDemo('brainstorm')">Brainstorm interventions based on this ↗</div>
+          <div class="sopt" onclick="continueConvo('all3flags')">Show me which students have the lowest SEL scores ↗</div>
+          <div class="sopt">Create a meeting agenda to discuss this ↗</div>
+          <div class="sopt">Generate full report ↗</div>
+        </div>`);
+      scrollBottom();
+    }, 700);
+  }
+
+  else if(topic === 'thresholds') {
+    appendMsg(container, 'ai', 'Of course — you can adjust any of these thresholds before I re-run the analysis. What would you like to change?');
+    appendRaw(container, `
+      <div class="scaffold-opts">
+        <div class="sopt">Change chronic absence from 10% to 15% ↗</div>
+        <div class="sopt">Add a new flag: 3+ days missed in a row ↗</div>
+        <div class="sopt">Keep thresholds as-is, continue ↗</div>
+      </div>`);
+    scrollBottom();
+  }
+}
+
+function toggleGradeAcc(id){document.getElementById(id).classList.toggle('open');}
+function toggleGradeExp(id){document.getElementById(id).classList.toggle('open');}
+function toggleSgAcc(id){document.getElementById(id).classList.toggle('open');}
+function toggleSgExp(id){document.getElementById(id).classList.toggle('open');}
+function switchSgTab(name){
+  document.querySelectorAll('.sg-tab').forEach((t,i)=>t.classList.toggle('active',['race','gender','sped','ell'][i]===name));
+  document.querySelectorAll('.sg-panel').forEach(p=>p.classList.remove('active'));
+  document.getElementById('sg-'+name).classList.add('active');
+}
+
+function toggleScoreInput(sel) {
+  const row = sel.closest('.course-row');
+  const isScore = sel.value === 'score';
+  row.querySelector('.letter-opts').style.display = isScore ? 'none' : 'flex';
+  row.querySelector('.score-opts').style.display = isScore ? 'flex' : 'none';
+}
+
+function addCourseRow() {
+  const list = document.getElementById('course-list');
+  if (!list) return;
+  const row = document.createElement('div');
+  row.className = 'course-row';
+  row.style.cssText = 'display:flex;align-items:center;gap:6px;';
+  row.innerHTML = `
+    <input type="text" style="font-size:12px;border:1px solid var(--border2);border-radius:6px;padding:4px 8px;width:110px;font-family:'DM Sans',sans-serif;color:var(--text);background:var(--surface);outline:none;" placeholder="Course name"/>
+    <select onchange="toggleScoreInput(this)" style="font-size:12px;border:1px solid var(--border2);border-radius:6px;padding:4px 8px;color:var(--text);background:var(--surface);font-family:'DM Sans',sans-serif;cursor:pointer;outline:none;">
+      <option value="letter">Letter grade</option>
+      <option value="score">Numeric score</option>
+    </select>
+    <div class="letter-opts" style="display:flex;align-items:center;">
+      <select style="font-size:12px;border:1px solid var(--border2);border-radius:6px;padding:4px 8px;color:var(--text);background:var(--surface);font-family:'DM Sans',sans-serif;cursor:pointer;outline:none;">
+        <option>F only</option>
+        <option>D or F</option>
+      </select>
+    </div>
+    <div class="score-opts" style="display:none;align-items:center;gap:4px;">
+      <span style="font-size:11px;color:var(--text2);">below</span>
+      <input type="number" value="60" min="0" max="100" style="font-size:12px;border:1px solid var(--border2);border-radius:6px;padding:4px 8px;width:54px;font-family:'DM Mono',monospace;color:var(--text);background:var(--surface);outline:none;text-align:center;"/>
+      <span style="font-size:11px;color:var(--text2);">/ 100</span>
+    </div>
+    <div onclick="this.closest('.course-row').remove()" style="width:20px;height:20px;border-radius:50%;border:1px solid var(--border2);display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--text3);font-size:14px;flex-shrink:0;line-height:1;margin-left:2px;">×</div>`;
+  list.appendChild(row);
+  row.querySelector('input[type=text]').focus();
+}
+
+function appendMsg(container, type, html) {
+  const row = document.createElement('div');
+  if(type === 'user') {
+    row.className = 'msg-row user';
+    row.innerHTML = `<div class="bubble user">${html}</div>`;
+  } else if(type === 'ai') {
+    row.className = 'msg-row';
+    row.innerHTML = `<div class="bubble ai" style="max-width:84%;">${html}</div>`;
+  } else if(type === 'ai-thinking') {
+    row.className = 'msg-row thinking-row';
+    row.innerHTML = `<div class="bubble ai" style="max-width:84%;display:flex;align-items:center;gap:6px;color:var(--text3);font-size:12px;"><div style="display:flex;gap:3px;"><span class="dot-pulse" style="animation-delay:0s"></span><span class="dot-pulse" style="animation-delay:.2s"></span><span class="dot-pulse" style="animation-delay:.4s"></span></div>Analysing your data…</div>`;
+  }
+  container.appendChild(row);
+}
+
+function appendRaw(container, html) {
+  const row = document.createElement('div');
+  row.className = 'msg-row';
+  row.innerHTML = html;
+  container.appendChild(row);
+}
+
+function appendDivider(container, label) {
+  const row = document.createElement('div');
+  row.className = 'msg-row';
+  row.innerHTML = `<div class="analysis-divider"><div class="adiv-line"></div><div class="adiv-label">${label}</div><div class="adiv-line"></div></div>`;
+  container.appendChild(row);
+}
+
+function removeThinking(container) {
+  const thinking = container.querySelector('.thinking-row');
+  if(thinking) thinking.remove();
+}
+
+function scrollBottom() {
+  const msgs = document.getElementById('msg-container');
+  if(msgs) msgs.scrollTop = msgs.scrollHeight;
+}
+
+function switchTab(name) {
+  ['plan','agenda','report'].forEach(t => {
+    document.getElementById('tab-' + t).classList.toggle('active', t === name);
+    document.getElementById('panel-' + t).style.display = t === name ? 'flex' : 'none';
+  });
+}
+
+function toggleAgendaEdit(btn) {
+  const item = btn.closest('.agenda-item');
+  const body = item.querySelector('.agenda-body');
+  const title = body.querySelector('.agenda-title');
+  const detail = body.querySelector('.agenda-detail');
+  if(item.querySelector('.agenda-edit-form')) {
+    item.querySelector('.agenda-edit-form').remove();
+    btn.style.opacity = '';
+    return;
+  }
+  const form = document.createElement('div');
+  form.className = 'agenda-edit-form';
+  form.style.cssText = 'display:flex;flex-direction:column;gap:5px;margin-top:8px;';
+  form.innerHTML = `<input class="edit-input" value="${title.textContent}" oninput="this.closest('.agenda-item').querySelector('.agenda-title').textContent=this.value"><textarea class="edit-textarea" rows="2" oninput="this.closest('.agenda-item').querySelector('.agenda-detail').textContent=this.value">${detail.textContent}</textarea><button class="edit-done-btn" onclick="this.closest('.agenda-edit-form').remove()">Done</button>`;
+  body.appendChild(form);
+  btn.style.opacity = '1';
+}
+
+function showView(name) {
+  const convo = document.getElementById('view-convo');
+  const lib = document.getElementById('view-library');
+  const navConvo = document.getElementById('nav-convo');
+  const navLib = document.getElementById('nav-lib');
+  convo.style.display = name === 'convo' ? 'flex' : 'none';
+  lib.style.display = name === 'library' ? 'flex' : 'none';
+  navConvo.classList.toggle('active', name === 'convo');
+  navLib.classList.toggle('active', name === 'library');
+}
+
+function toggleEdit(id) {
+  const item = document.getElementById(id);
+  const editPanel = document.getElementById(id + '-edit');
+  const isEditing = editPanel.style.display !== 'none';
+  editPanel.style.display = isEditing ? 'none' : 'flex';
+  item.classList.toggle('editing', !isEditing);
+}
+
+function toggleCheck(el) {
+  el.classList.toggle('checked');
+  el.closest('.plan-action-item').classList.toggle('done');
+}
+
+function toggleDocCheck(rowId, el) {
+  el.classList.toggle('checked');
+  document.getElementById(rowId).classList.toggle('done');
+}
+</script>
+</body>
+</html>

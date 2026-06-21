@@ -9,9 +9,16 @@
   "license": "ISC",
   "dependencies": {
     "@anthropic-ai/sdk": "^0.105.0",
+    "@supabase/supabase-js": "^2.108.2",
+    "@types/pdf-parse": "^1.1.5",
     "next": "^16.2.9",
+    "pdf-parse": "^2.4.5",
     "react": "^19.2.7",
-    "react-dom": "^19.2.7"
+    "react-dom": "^19.2.7",
+    "react-is": "^19.2.7",
+    "react-markdown": "^10.1.0",
+    "recharts": "^3.8.1",
+    "remark-gfm": "^4.0.1"
   },
   "devDependencies": {
     "@types/node": "^26.0.0",
