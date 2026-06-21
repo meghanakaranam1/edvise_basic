@@ -49,7 +49,8 @@ Return ONLY the JSON array, no explanation.`,
 
 function scoreDoc(doc: KbDoc, terms: string[]): number {
   const tagText = (doc.tags ?? []).join(' ').toLowerCase()
-  return terms.filter(t => tagText.includes(t.toLowerCase())).length
+  const words = terms.flatMap(t => t.toLowerCase().split(/\s+/))
+  return words.filter(w => tagText.includes(w)).length
 }
 
 export async function searchKB(query: string, scopes: string[], topK = 4): Promise<KbDoc[]> {
