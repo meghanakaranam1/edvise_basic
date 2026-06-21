@@ -11,6 +11,7 @@ interface Props {
   onRemoveFile?: () => void
   thresholds?: Thresholds
   onChangeCriteria?: (t: Thresholds) => void
+  csvPreview?: { columns: string[]; rows: Record<string, string>[] }
 }
 
 type SourceKey = 'student_success' | 'school' | 'general' | 'web'
@@ -64,11 +65,12 @@ function dot(color: string): React.CSSProperties {
 
 export default function MessageInput({
   onSend, onFileSelect, disabled, fileLabel, onRemoveFile,
-  thresholds, onChangeCriteria,
+  thresholds, onChangeCriteria, csvPreview,
 }: Props) {
   const [text, setText] = useState('')
   const [activeKB, setActiveKB] = useState<SourceKey[]>(['student_success', 'general'])
   const [showCriteria, setShowCriteria] = useState(false)
+  const [showCsvPreview, setShowCsvPreview] = useState(false)
   const [editT, setEditT] = useState<Thresholds>({})
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -219,17 +221,62 @@ export default function MessageInput({
         </div>
       )}
 
+      {/* CSV preview modal */}
+      {showCsvPreview && csvPreview && (
+        <div
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
+          onClick={() => setShowCsvPreview(false)}
+        >
+          <div
+            style={{ background: '#fff', borderRadius: 14, boxShadow: '0 8px 40px rgba(42,59,124,0.18)', width: '100%', maxWidth: 900, maxHeight: '80vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px', borderBottom: '1px solid #e4e9f2' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="#3E94A5" strokeWidth="2" width="15" height="15">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                  <polyline points="14 2 14 8 20 8"/>
+                </svg>
+                <span style={{ fontSize: 13, fontWeight: 600, color: '#2A3B7C' }}>{fileLabel}</span>
+                <span style={{ fontSize: 11, color: '#7a89b8' }}>— first {csvPreview.rows.length} rows of {csvPreview.columns.length} columns</span>
+              </div>
+              <button type="button" onClick={() => setShowCsvPreview(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#7a89b8', fontSize: 18, lineHeight: 1, padding: 4 }}>✕</button>
+            </div>
+            <div style={{ overflowX: 'auto', overflowY: 'auto', flex: 1 }}>
+              <table style={{ borderCollapse: 'collapse', fontSize: 11, width: '100%', minWidth: 'max-content' }}>
+                <thead>
+                  <tr style={{ background: '#f7f9fc' }}>
+                    {csvPreview.columns.map(col => (
+                      <th key={col} style={{ padding: '8px 12px', textAlign: 'left', color: '#2A3B7C', fontWeight: 600, borderBottom: '1px solid #e4e9f2', whiteSpace: 'nowrap' }}>{col}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {csvPreview.rows.map((row, i) => (
+                    <tr key={i} style={{ borderBottom: '1px solid #f0f3fa', background: i % 2 === 0 ? '#fff' : '#fafbfe' }}>
+                      {csvPreview.columns.map(col => (
+                        <td key={col} style={{ padding: '7px 12px', color: '#374151', whiteSpace: 'nowrap' }}>{row[col] ?? ''}</td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* File chip + criteria chip row */}
       {fileLabel && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8, flexWrap: 'wrap' }}>
-          <div className="file-chip">
+          <div className="file-chip" style={{ cursor: csvPreview ? 'pointer' : 'default' }} onClick={() => csvPreview && setShowCsvPreview(true)}>
             <svg viewBox="0 0 24 24" fill="none" stroke="#3E94A5" strokeWidth="2" width="13" height="13">
               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
               <polyline points="14 2 14 8 20 8"/>
             </svg>
             {fileLabel}
             {onRemoveFile && (
-              <button type="button" onClick={onRemoveFile} title="Remove file">✕</button>
+              <button type="button" onClick={e => { e.stopPropagation(); onRemoveFile() }} title="Remove file">✕</button>
             )}
           </div>
 

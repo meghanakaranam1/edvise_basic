@@ -189,10 +189,13 @@ Always end every response with exactly one <!--SUGGEST:--> line following the pa
     : "You are Edvise, a helpful teaching assistant. Ask the teacher to upload a gradebook CSV to get started.";
 
   // Build source context block appended to system prompt
-  const sourceBlock = (kbDocs.length || webSources.length)
-    ? `\n\nThe following documents and sources have been provided. Draw on them when relevant to the teacher's question:\n` +
-      [...kbDocs.map(d => `- ${d.filename.replace(/_/g, ' ').replace(/\.(pdf|txt|docx)$/i, '')}`),
-       ...webSources.map(s => `- ${s.title} (${s.url})`)].join('\n')
+  const allSources = [
+    ...kbDocs.map(d => d.filename.replace(/_/g, ' ').replace(/\.(pdf|txt|docx)$/i, '')),
+    ...webSources.map(s => `${s.title} (${s.url})`),
+  ]
+  const sourceBlock = allSources.length
+    ? `\n\nThe following resources are available — cite them inline by number whenever you draw on them (e.g., "Attendance improves with outreach [1]."). Use one or more citation numbers per paragraph that references these sources.\n` +
+      allSources.map((title, i) => `[${i + 1}] ${title}`).join('\n')
     : '';
 
   // Metadata to send to frontend so it can show source chips

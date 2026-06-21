@@ -12,7 +12,7 @@ import AdminKB from './components/AdminKB'
 import type { Note, ArtifactType, Artifacts } from './components/RightPanel/types'
 import { parseCsv } from './lib/csvUtils'
 import type { Thresholds } from './components/Cards/CriteriaSettingCard'
-import { describeThresholds, thresholdPrompt } from './components/Cards/CriteriaSettingCard'
+import { thresholdPrompt } from './components/Cards/CriteriaSettingCard'
 import { supabase } from './lib/supabase'
 import type { SupabaseSession } from './lib/supabase'
 import {
@@ -41,6 +41,7 @@ export default function Page() {
   const [fileLabel, setFileLabel] = useState<string | undefined>()
   const [thresholds, setThresholds] = useState<Thresholds | undefined>()
   const [columnMapping, setColumnMapping] = useState<Record<string, string> | undefined>()
+  const [csvPreview, setCsvPreview] = useState<{ columns: string[]; rows: Record<string, string>[] } | undefined>()
   const fileIdRef = useRef<string | undefined>(undefined)
   const apiMessages = useRef<{ role: 'user' | 'assistant'; content: string }[]>([])
   const conversationIdRef = useRef<string | undefined>(undefined)
@@ -82,6 +83,7 @@ export default function Page() {
     setActiveConversationId(undefined)
     setThresholds(undefined)
     setColumnMapping(undefined)
+    setCsvPreview(undefined)
     setFileLabel(undefined)
     setNotes([])
     setArtifacts({})
@@ -144,8 +146,8 @@ export default function Page() {
     if (isStreaming) return
     setMainView('chat')
 
-    // Create Supabase conversation on first real message
-    if (session && !conversationIdRef.current) {
+    // Create Supabase conversation on first message that has a file attached
+    if (session && !conversationIdRef.current && fileIdRef.current) {
       try {
         const title = userText.slice(0, 60)
         const convo = await createConversation(title)
@@ -218,6 +220,7 @@ export default function Page() {
     setActiveConversationId(undefined)
     setThresholds(undefined)
     setColumnMapping(undefined)
+    setCsvPreview(undefined)
     setFileLabel(`Reading ${file.name}…`)
     addMessage({ role: 'assistant', isLoading: true })
 
@@ -225,6 +228,7 @@ export default function Page() {
       const [meta, { fileId: id }] = await Promise.all([parseCsv(file), uploadFile(file)])
       fileIdRef.current = id
       setFileLabel(meta.filename)
+      setCsvPreview({ columns: meta.columns, rows: meta.preview })
 
       // Ask Claude to suggest human-readable labels for all columns
       let suggestedLabels: Record<string, string> = {}
@@ -256,25 +260,12 @@ export default function Page() {
   function handleCriteriaConfirmed(t: Thresholds) {
     setThresholds(t)
     setPhase('chatting')
-    doSend(
-      `Run a school-wide risk overview of the uploaded gradebook. ` +
-      `Thresholds: ${describeThresholds(t)}. ` +
-      `Compute: total students, count and % for each indicator, count and % for students with 2+ indicators, count and % for all 3. ` +
-      `Output the risk_overview card, then write 2 sentences of key insight. Do not run grade breakdown or subgroup analysis yet.`,
-      'student_success,general',
-      t
-    )
+    doSend('Run the school-wide risk overview.', 'student_success,general', t)
   }
 
   function handleChangeCriteria(t: Thresholds) {
     setThresholds(t)
-    doSend(
-      `Criteria updated to: ${describeThresholds(t)}. ` +
-      `Re-run the school-wide risk overview from scratch using ONLY these thresholds — ignore any threshold values mentioned earlier in this conversation. ` +
-      `Recompute all counts and percentages with the new criteria and output a fresh risk_overview card.`,
-      'student_success,general',
-      t
-    )
+    doSend('Re-run the school-wide risk overview with the updated criteria.', 'student_success,general', t)
   }
 
   async function handleSelectConversation(id: string) {
@@ -306,6 +297,7 @@ export default function Page() {
     conversationIdRef.current = undefined
     setActiveConversationId(undefined)
     setThresholds(undefined)
+    setCsvPreview(undefined)
     setFileLabel(undefined)
     setMainView('chat')
   }
@@ -319,6 +311,7 @@ export default function Page() {
     fileIdRef.current = undefined
     setFileLabel(undefined)
     setThresholds(undefined)
+    setCsvPreview(undefined)
     setPhase('idle')
     setMessages([])
     apiMessages.current = []
@@ -447,6 +440,7 @@ export default function Page() {
               onRemoveFile={fileLabel ? handleRemoveFile : undefined}
               thresholds={thresholds}
               onChangeCriteria={handleChangeCriteria}
+              csvPreview={csvPreview}
             />
           </>
         )}
