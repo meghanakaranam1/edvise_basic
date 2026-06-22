@@ -2,6 +2,7 @@ export interface CsvMeta {
   columns: string[]
   rows: number
   preview: Record<string, string>[]
+  columnUniques: Record<string, string[]>
   filename: string
 }
 
@@ -16,7 +17,17 @@ export function parseCsv(file: File): Promise<CsvMeta> {
         const vals = line.split(',').map((v) => v.trim().replace(/^"|"$/g, ''))
         return Object.fromEntries(columns.map((c, i) => [c, vals[i] ?? '']))
       })
-      resolve({ columns, rows: lines.length - 1, preview, filename: file.name })
+      // Collect up to 20 unique non-empty values per column from full dataset
+      const uniqueSets: Record<string, Set<string>> = Object.fromEntries(columns.map(c => [c, new Set<string>()]))
+      for (const line of lines.slice(1)) {
+        const vals = line.split(',').map((v) => v.trim().replace(/^"|"$/g, ''))
+        columns.forEach((c, i) => {
+          const v = vals[i]?.trim()
+          if (v && uniqueSets[c].size < 20) uniqueSets[c].add(v)
+        })
+      }
+      const columnUniques = Object.fromEntries(columns.map(c => [c, [...uniqueSets[c]]]))
+      resolve({ columns, rows: lines.length - 1, preview, columnUniques, filename: file.name })
     }
     reader.readAsText(file)
   })

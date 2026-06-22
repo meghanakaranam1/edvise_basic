@@ -13,6 +13,12 @@ type KbDoc = {
   created_at: string
 }
 
+type UploadProgress = {
+  filename: string
+  status: 'pending' | 'uploading' | 'success' | 'error'
+  error?: string
+}
+
 const STATUS_STYLE: Record<string, React.CSSProperties> = {
   approved: { background: '#ecfdf5', color: '#065f46', border: '1px solid #6ee7b7' },
   pending:  { background: '#fef3c7', color: '#92400e', border: '1px solid #fcd34d' },
@@ -32,6 +38,7 @@ export default function AdminKB({ session }: { session: SupabaseSession }) {
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
   const [scope, setScope] = useState<'global' | 'school'>('global')
+  const [uploadProgress, setUploadProgress] = useState<UploadProgress[]>([])
   const fileRef = useRef<HTMLInputElement>(null)
   const token = session?.access_token ?? ''
   const isAdmin = session?.user?.email === process.env.NEXT_PUBLIC_ADMIN_EMAIL
@@ -48,37 +55,56 @@ export default function AdminKB({ session }: { session: SupabaseSession }) {
 
   useEffect(() => { load() }, [token])
 
-  async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
-    e.target.value = ''
-    setUploading(true)
+  async function uploadFile(file: File, uploadScope: string): Promise<boolean> {
     try {
       const form = new FormData()
       form.append('file', file)
-      form.append('scope', scope)
+      form.append('scope', uploadScope)
       const res = await fetch('/api/kb/upload', { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: form })
       if (!res.ok) throw new Error(await res.text())
-      await load()
+      return true
     } catch (err) {
-      alert('Upload failed: ' + String(err))
+      throw err
     }
+  }
+
+  async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? [])
+    if (files.length === 0) return
+    e.target.value = ''
+    
+    setUploading(true)
+    setUploadProgress(files.map(f => ({ filename: f.name, status: 'pending' })))
+
+    let successCount = 0
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i]
+      setUploadProgress(prev => {
+        const next = [...prev]
+        next[i] = { filename: file.name, status: 'uploading' }
+        return next
+      })
+
+      try {
+        await uploadFile(file, scope)
+        setUploadProgress(prev => {
+          const next = [...prev]
+          next[i] = { filename: file.name, status: 'success' }
+          return next
+        })
+        successCount++
+      } catch (err) {
+        setUploadProgress(prev => {
+          const next = [...prev]
+          next[i] = { filename: file.name, status: 'error', error: String(err) }
+          return next
+        })
+      }
+    }
+
+    await load()
     setUploading(false)
-  }
-
-  async function handleApprove(id: string, status: 'approved' | 'rejected') {
-    await fetch(`/api/kb/${id}`, {
-      method: 'PATCH',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status }),
-    })
-    await load()
-  }
-
-  async function handleDelete(id: string) {
-    if (!confirm('Delete this document?')) return
-    await fetch(`/api/kb/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } })
-    await load()
+    setTimeout(() => setUploadProgress([]), 3000) // Clear progress after 3s
   }
 
   return (
@@ -105,9 +131,28 @@ export default function AdminKB({ session }: { session: SupabaseSession }) {
           >
             {uploading ? 'Uploading…' : '+ Upload'}
           </button>
-          <input ref={fileRef} type="file" accept=".pdf,.txt,.csv,.docx" style={{ display: 'none' }} onChange={handleUpload} />
+          <input ref={fileRef} type="file" accept=".pdf,.txt,.csv,.docx" multiple style={{ display: 'none' }} onChange={handleUpload} />
         </div>
       </div>
+
+      {/* Upload progress */}
+      {uploadProgress.length > 0 && (
+        <div style={{ padding: '12px 24px', background: 'var(--surface)', borderBottom: '1px solid var(--border)', maxHeight: 200, overflow: 'auto' }}>
+          {uploadProgress.map((prog, i) => (
+            <div key={i} style={{ fontSize: 12, padding: '6px 0', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ 
+                width: 14, height: 14, borderRadius: '50%',
+                background: prog.status === 'success' ? '#10b981' : prog.status === 'error' ? '#ef4444' : prog.status === 'uploading' ? '#3b82f6' : '#d1d5db',
+                flexShrink: 0
+              }} />
+              <span style={{ color: 'var(--text)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>{prog.filename}</span>
+              <span style={{ color: prog.status === 'error' ? '#ef4444' : 'var(--text-muted)', fontSize: 11 }}>
+                {prog.status === 'success' ? '✓' : prog.status === 'error' ? '✗' : prog.status === 'uploading' ? '↻' : '○'}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Document list */}
       <div style={{ flex: 1, overflow: 'auto', padding: 24 }}>
@@ -149,12 +194,27 @@ export default function AdminKB({ session }: { session: SupabaseSession }) {
                     <div style={{ display: 'flex', gap: 6 }}>
                       {isAdmin && doc.status === 'pending' && (
                         <>
-                          <button onClick={() => handleApprove(doc.id, 'approved')} style={{ fontSize: 11, padding: '3px 8px', borderRadius: 6, border: '1px solid #6ee7b7', background: '#ecfdf5', color: '#065f46', cursor: 'pointer', fontFamily: 'inherit' }}>Approve</button>
-                          <button onClick={() => handleApprove(doc.id, 'rejected')} style={{ fontSize: 11, padding: '3px 8px', borderRadius: 6, border: '1px solid #fca5a5', background: '#fef2f2', color: '#991b1b', cursor: 'pointer', fontFamily: 'inherit' }}>Reject</button>
+                          <button onClick={() => {
+                            fetch(`/api/kb/${doc.id}`, {
+                              method: 'PATCH',
+                              headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ status: 'approved' }),
+                            }).then(() => load())
+                          }} style={{ fontSize: 11, padding: '3px 8px', borderRadius: 6, border: '1px solid #6ee7b7', background: '#ecfdf5', color: '#065f46', cursor: 'pointer', fontFamily: 'inherit' }}>Approve</button>
+                          <button onClick={() => {
+                            fetch(`/api/kb/${doc.id}`, {
+                              method: 'PATCH',
+                              headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ status: 'rejected' }),
+                            }).then(() => load())
+                          }} style={{ fontSize: 11, padding: '3px 8px', borderRadius: 6, border: '1px solid #fca5a5', background: '#fef2f2', color: '#991b1b', cursor: 'pointer', fontFamily: 'inherit' }}>Reject</button>
                         </>
                       )}
                       {isAdmin && (
-                        <button onClick={() => handleDelete(doc.id)} style={{ fontSize: 11, padding: '3px 8px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text-muted)', cursor: 'pointer', fontFamily: 'inherit' }}>Delete</button>
+                        <button onClick={() => {
+                          if (!confirm('Delete this document?')) return
+                          fetch(`/api/kb/${doc.id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } }).then(() => load())
+                        }} style={{ fontSize: 11, padding: '3px 8px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text-muted)', cursor: 'pointer', fontFamily: 'inherit' }}>Delete</button>
                       )}
                     </div>
                   </td>

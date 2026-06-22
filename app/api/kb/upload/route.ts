@@ -51,7 +51,6 @@ Excerpt: ${preview}`,
 }
 
 export async function POST(req: NextRequest) {
-  // Get user from auth header
   const authHeader = req.headers.get('authorization') ?? ''
   const token = authHeader.replace('Bearer ', '').trim()
   if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -76,20 +75,25 @@ export async function POST(req: NextRequest) {
     const mimeType = ext === 'pdf' ? 'application/pdf' : 'text/plain'
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const uploaded = await (anthropic.beta.files as any).upload(
-      { file: [filename, buf, mimeType] },
-      { headers: { 'anthropic-beta': 'files-api-2025-04-14' } },
+      {
+        file: new File([buf], filename, { type: mimeType }),
+      },
+      {
+        headers: { 'anthropic-beta': 'files-api-2025-04-14' },
+      } as any
     )
     anthropicFileId = uploaded.id
+    console.log('✅ File uploaded to Anthropic:', anthropicFileId)
   } catch (err) {
-    console.error('Anthropic file upload failed:', err)
+    console.error('❌ Anthropic file upload failed:', err instanceof Error ? err.message : err)
     return NextResponse.json({ error: 'Failed to upload file to Anthropic' }, { status: 500 })
   }
 
-  // Extract text preview for tag generation
+  // Extract text preview and generate tags
   const preview = await extractTextPreview(buf, filename, ext)
   const tags = await generateTags(preview, filename)
 
-  // Global scope docs auto-approve if admin
+  // Auto-approve global docs if admin
   const isAdmin = user.email === ADMIN_EMAIL
   const status = (scope === 'global' && isAdmin) ? 'approved' : 'pending'
 

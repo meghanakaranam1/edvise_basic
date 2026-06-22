@@ -1,47 +1,21 @@
 'use client'
 import { useState } from 'react'
+import type { Indicators } from '../../api/suggest-columns/route'
 
 export interface Thresholds {
-  absencePct?: number    // rate-based: ≥X% days missed
-  absenceDays?: number   // count-based: ≥X days absent
+  absencePct?: number       // rate-based: missed ≥X% of days
+  absenceDays?: number      // count-based: ≥X days absent
   suspensionMin?: number
-  failingGrade?: number  // grade-based: below X
-  failingCount?: number  // count-based: ≥X failed courses
+  failingGrade?: number     // numeric grade: below X
+  failingGradeLetter?: string  // letter grade: 'D' or 'F'
+  failingCount?: number     // count-based: ≥X failed courses
 }
 
 interface Props {
   columnMapping?: Record<string, string>
+  columnUniques?: Record<string, string[]>
+  indicators?: Indicators
   onConfirm: (t: Thresholds) => void
-}
-
-type AbsenceType = 'rate' | 'days' | null
-type FailureType = 'grade' | 'count' | null
-
-function detect(mapping: Record<string, string> = {}) {
-  let absenceType: AbsenceType = null
-  let suspensionFound = false
-  let failureType: FailureType = null
-
-  for (const label of Object.values(mapping)) {
-    if (!absenceType) {
-      if (/attendance rate/i.test(label)) absenceType = 'rate'
-      else if (/days? absent|absent days?/i.test(label)) absenceType = 'days'
-    }
-    if (/suspension/i.test(label)) suspensionFound = true
-    if (!failureType) {
-      if (/\bfailures?\b/i.test(label)) failureType = 'count'
-      else if (/\bgrade\b|\bgpa\b/i.test(label)) failureType = 'grade'
-    }
-  }
-
-  // If no mapping provided at all, fall back to showing all three with defaults
-  if (!Object.keys(mapping).length) {
-    absenceType = 'rate'
-    suspensionFound = true
-    failureType = 'grade'
-  }
-
-  return { absenceType, suspensionFound, failureType }
 }
 
 export function describeThresholds(t: Thresholds): string {
@@ -50,35 +24,53 @@ export function describeThresholds(t: Thresholds): string {
   if (t.absenceDays != null) parts.push(`absent ≥${t.absenceDays} days`)
   if (t.suspensionMin != null) parts.push(`suspensions ≥${t.suspensionMin}`)
   if (t.failingGrade != null) parts.push(`grade below ${t.failingGrade}`)
+  if (t.failingGradeLetter != null) parts.push(`grade ${t.failingGradeLetter} or below`)
   if (t.failingCount != null) parts.push(`≥${t.failingCount} failed course${t.failingCount > 1 ? 's' : ''}`)
   return parts.join(' · ')
 }
 
-export function thresholdPrompt(t: Thresholds): string {
+export function thresholdPrompt(t: Thresholds, ind?: Indicators): string {
+  const col = (key: string) => ind ? ` (column: \`${key}\`)` : ''
+  const absCol = ind?.absence?.column ?? ''
+  const susCol = ind?.suspension?.column ?? ''
+  const failCol = ind?.academicFailure?.column ?? ''
+
   const flags: string[] = []
-  if (t.absencePct != null)
-    flags.push(`Chronic absence flag: attendance rate < ${100 - t.absencePct}% (missed ≥${t.absencePct}% of days)`)
+  if (t.absencePct != null) {
+    if (ind?.absence?.type === 'rate') {
+      flags.push(`Chronic absence flag${col(absCol)}: attendance rate stored as decimal 0–1. Flag where \`${absCol || 'attendance_rate'}\` < ${(100 - t.absencePct) / 100} (i.e. missed ≥${t.absencePct}% of days).`)
+    } else if (ind?.absence?.type === 'days') {
+      flags.push(`Chronic absence flag${col(absCol)}: flag where \`${absCol || 'days_absent'}\` ≥ ${Math.round(t.absencePct / 100 * 180)} days.`)
+    } else {
+      flags.push(`Chronic absence flag: student missed ≥${t.absencePct}% of days. Check whether the column stores a decimal (0–1) or percentage (0–100) and compare accordingly.`)
+    }
+  }
   if (t.absenceDays != null)
-    flags.push(`Chronic absence flag: days absent ≥ ${t.absenceDays}`)
+    flags.push(`Chronic absence flag${col(absCol)}: flag where \`${absCol || 'days_absent'}\` ≥ ${t.absenceDays}`)
   if (t.suspensionMin != null)
-    flags.push(`Suspension flag: suspension count ≥ ${t.suspensionMin}`)
+    flags.push(`Suspension flag${col(susCol)}: flag where \`${susCol || 'suspensions'}\` ≥ ${t.suspensionMin}`)
   if (t.failingGrade != null)
-    flags.push(`Academic failure flag: any course grade below ${t.failingGrade}`)
+    flags.push(`Academic failure flag${col(failCol)}: flag where \`${failCol || 'grade'}\` < ${t.failingGrade}`)
+  if (t.failingGradeLetter != null)
+    flags.push(`Academic failure flag${col(failCol)}: flag where \`${failCol || 'grade'}\` is ${t.failingGradeLetter === 'D' ? '"D" or "F"' : '"F"'}`)
   if (t.failingCount != null)
-    flags.push(`Academic failure flag: total failed courses ≥ ${t.failingCount}`)
+    flags.push(`Academic failure flag${col(failCol)}: flag where \`${failCol || 'failures'}\` ≥ ${t.failingCount}`)
   return flags.join('\n')
 }
 
-export default function CriteriaSettingCard({ columnMapping, onConfirm }: Props) {
-  const { absenceType, suspensionFound, failureType } = detect(columnMapping ?? {})
+export default function CriteriaSettingCard({ indicators, onConfirm }: Props) {
+  const absence = indicators?.absence
+  const suspension = indicators?.suspension
+  const failure = indicators?.academicFailure
 
   const [t, setT] = useState<Thresholds>(() => {
     const init: Thresholds = {}
-    if (absenceType === 'rate') init.absencePct = 10
-    else if (absenceType === 'days') init.absenceDays = 10
-    if (suspensionFound) init.suspensionMin = 1
-    if (failureType === 'grade') init.failingGrade = 60
-    else if (failureType === 'count') init.failingCount = 1
+    if (absence?.type === 'rate') init.absencePct = 10
+    else if (absence?.type === 'days') init.absenceDays = 10
+    if (suspension) init.suspensionMin = 1
+    if (failure?.type === 'grade-numeric') init.failingGrade = 60
+    else if (failure?.type === 'grade-letter') init.failingGradeLetter = 'D'
+    else if (failure?.type === 'count') init.failingCount = 1
     return init
   })
   const [confirmed, setConfirmed] = useState(false)
@@ -103,6 +95,8 @@ export default function CriteriaSettingCard({ columnMapping, onConfirm }: Props)
   const dot = (color: string) => ({ width: 8, height: 8, borderRadius: '50%', background: color, flexShrink: 0 } as React.CSSProperties)
   const sel: React.CSSProperties = { border: '1px solid #d4dff7', borderRadius: 8, padding: '6px 10px', fontSize: 12, color: '#2A3B7C', background: '#fff', minWidth: 200 }
 
+  const hasAny = absence || suspension || failure
+
   return (
     <div className="analysis-card" style={{ maxWidth: 500 }}>
       <div className="analysis-card-header">
@@ -110,8 +104,8 @@ export default function CriteriaSettingCard({ columnMapping, onConfirm }: Props)
       </div>
       <div className="analysis-card-body" style={{ paddingTop: 4, paddingBottom: 8 }}>
 
-        {/* Absence */}
-        {absenceType === 'rate' && (
+        {/* Chronic absence */}
+        {absence?.type === 'rate' && (
           <div style={rowStyle}>
             <div style={labelStyle}>
               <span style={dot('#3E94A5')} />
@@ -122,7 +116,7 @@ export default function CriteriaSettingCard({ columnMapping, onConfirm }: Props)
             </select>
           </div>
         )}
-        {absenceType === 'days' && (
+        {absence?.type === 'days' && (
           <div style={rowStyle}>
             <div style={labelStyle}>
               <span style={dot('#3E94A5')} />
@@ -135,7 +129,7 @@ export default function CriteriaSettingCard({ columnMapping, onConfirm }: Props)
         )}
 
         {/* Suspension */}
-        {suspensionFound && (
+        {suspension && (
           <div style={rowStyle}>
             <div style={labelStyle}>
               <span style={dot('#B45309')} />
@@ -147,8 +141,8 @@ export default function CriteriaSettingCard({ columnMapping, onConfirm }: Props)
           </div>
         )}
 
-        {/* Academic failure */}
-        {failureType === 'grade' && (
+        {/* Academic failure — numeric grade */}
+        {failure?.type === 'grade-numeric' && (
           <div style={{ ...rowStyle, borderBottom: 'none' }}>
             <div style={labelStyle}>
               <span style={dot('#c53030')} />
@@ -159,7 +153,23 @@ export default function CriteriaSettingCard({ columnMapping, onConfirm }: Props)
             </select>
           </div>
         )}
-        {failureType === 'count' && (
+
+        {/* Academic failure — letter grade */}
+        {failure?.type === 'grade-letter' && (
+          <div style={{ ...rowStyle, borderBottom: 'none' }}>
+            <div style={labelStyle}>
+              <span style={dot('#c53030')} />
+              Academic failure — flag students with
+            </div>
+            <select style={sel} value={t.failingGradeLetter} onChange={e => setT(p => ({ ...p, failingGradeLetter: e.target.value }))}>
+              <option value="D">D or below (D, F)</option>
+              <option value="F">F only</option>
+            </select>
+          </div>
+        )}
+
+        {/* Academic failure — count of failed courses */}
+        {failure?.type === 'count' && (
           <div style={{ ...rowStyle, borderBottom: 'none' }}>
             <div style={labelStyle}>
               <span style={dot('#c53030')} />
@@ -169,6 +179,12 @@ export default function CriteriaSettingCard({ columnMapping, onConfirm }: Props)
               {[1, 2, 3].map(v => <option key={v} value={v}>≥{v} failed course{v > 1 ? 's' : ''}</option>)}
             </select>
           </div>
+        )}
+
+        {!hasAny && (
+          <p style={{ fontSize: 13, color: '#6b7280', margin: '8px 0' }}>
+            Could not automatically detect risk indicator columns. Ask Ev to run the analysis and describe your column names.
+          </p>
         )}
 
         <button

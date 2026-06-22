@@ -2,21 +2,30 @@ export type Note = { id: string; content: string }
 
 export type ArtifactType = 'action_plan' | 'agenda' | 'report'
 
+export type ActionPlanStep = {
+  id: string
+  title: string
+  bullets: string[]
+}
+
+export type ActionPlanScheduleRow = {
+  date_week: string
+  focus: string
+  lead: string
+  status: string
+}
+
 export type ActionPlan = {
+  title: string
+  date_created?: string
+  tags: string[]
+  summary: string
   goal: string
-  focus_group: string[]
-  weeks: {
-    week_label: string
-    theme: string
-    actions: {
-      id: string
-      action: string
-      detail: string
-      owner: string
-      status: 'not_started' | 'in_progress' | 'completed' | 'blocked'
-      done: boolean
-    }[]
-  }[]
+  target_date: string
+  students: string[]
+  steps: ActionPlanStep[]
+  schedule: ActionPlanScheduleRow[]
+  notes?: string
 }
 
 export type Agenda = {
@@ -35,12 +44,16 @@ export type Agenda = {
   }[]
 }
 
+export type ReportSection = {
+  title: string
+  content: string
+}
+
 export type Report = {
   title: string
-  summary: string
-  key_findings: string[]
-  recommendations: string[]
-  next_steps: string[]
+  template: 'full_analysis' | 'family_letter'
+  sections: ReportSection[]
+  closing_actions: string[]
 }
 
 export type Artifacts = {

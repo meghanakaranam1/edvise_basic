@@ -19,15 +19,20 @@ export default function AgendaTab({
   data,
   generating,
   onGenerate,
+  onSave,
+  onDiscard,
 }: {
   data?: Agenda
   generating: boolean
   onGenerate: () => void
+  onSave?: () => void
+  onDiscard?: () => void
 }) {
   const [agenda, setAgenda] = useState<Agenda | undefined>(data)
   const [editing, setEditing] = useState(false)
+  const [saved, setSaved] = useState(false)
 
-  useEffect(() => { setAgenda(data); setEditing(false) }, [data])
+  useEffect(() => { setAgenda(data); setEditing(false); setSaved(false) }, [data])
 
   if (generating) return <Loading />
 
@@ -137,6 +142,20 @@ export default function AgendaTab({
             </div>
           ))}
         </>
+      )}
+
+      {/* Save bar */}
+      {onSave && (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 8, marginTop: 16, paddingTop: 14, borderTop: '1px solid #f0f2f8' }}>
+          {saved ? (
+            <div style={{ gridColumn: '1 / -1', textAlign: 'center', fontSize: 12, fontWeight: 600, color: '#1b6070' }}>✓ Saved to My Actions</div>
+          ) : (
+            <>
+              <button onClick={onDiscard} style={{ padding: '10px', border: '1px solid #e4e9f2', borderRadius: 10, background: 'white', color: '#374151', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Discard</button>
+              <button onClick={() => { onSave(); setSaved(true) }} style={{ padding: '10px', border: 'none', borderRadius: 10, background: '#1b6070', color: 'white', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Save to my actions</button>
+            </>
+          )}
+        </div>
       )}
     </div>
   )

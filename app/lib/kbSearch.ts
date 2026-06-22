@@ -1,12 +1,9 @@
 import { createClient } from '@supabase/supabase-js'
-import Anthropic from '@anthropic-ai/sdk'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_KEY!,
 )
-
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
 export type KbDoc = {
   id: string
@@ -18,62 +15,55 @@ export type KbDoc = {
   file_type: string
 }
 
-async function extractSearchTerms(query: string): Promise<string[]> {
-  const msg = await anthropic.messages.create({
-    model: 'claude-haiku-4-5',
-    max_tokens: 150,
-    messages: [{
-      role: 'user',
-      content: `A school administrator asked: "${query}"
-
-Decide if answering this well requires searching a library of educational resources, research, or intervention strategies.
-
-Search IS needed for: intervention plans, PD plans, strategies, programs, best practices, how-to guidance, root cause analysis, SEL approaches — even if the question references specific grades or student groups.
-Search is NOT needed for: pure data operations like counts, exports, comparisons of numbers, risk overviews, roster requests, or criteria changes.
-
-If search is needed, return a JSON array of 2–5 short keyword phrases that would find relevant documents (e.g. ["suspension reduction", "restorative practices", "classroom consistency"]).
-If search is not needed, return an empty JSON array.
-
-Return ONLY the JSON array, no explanation.`,
-    }],
-  })
-
-  try {
-    const text = msg.content[0].type === 'text' ? msg.content[0].text.trim() : '[]'
-    const match = text.match(/\[[\s\S]*\]/)
-    return match ? JSON.parse(match[0]) : []
-  } catch {
-    return []
-  }
+function tokenize(text: string): Set<string> {
+  return new Set(
+    text
+      .toLowerCase()
+      .replace(/[^a-z0-9\s-]/g, ' ')
+      .split(/[\s-]+/)
+      .filter(w => w.length > 2)
+  )
 }
 
-function scoreDoc(doc: KbDoc, terms: string[]): number {
-  const tagText = (doc.tags ?? []).join(' ').toLowerCase()
-  const words = terms.flatMap(t => t.toLowerCase().split(/\s+/))
-  return words.filter(w => tagText.includes(w)).length
+function scoreDoc(doc: KbDoc, queryStems: Set<string>): number {
+  const tagStems = tokenize((doc.tags ?? []).join(' '))
+  const nameStems = tokenize(doc.filename.replace(/\.(pdf|txt|docx)$/i, ''))
+  // Docs with no tags rely on filename only — give filename matches full weight
+  const noTags = (doc.tags ?? []).length === 0
+
+  let score = 0
+  for (const q of queryStems) {
+    if (tagStems.has(q)) score += 2
+    else if (nameStems.has(q)) score += noTags ? 2 : 1
+  }
+  return score
 }
 
 export async function searchKB(query: string, scopes: string[], topK = 4): Promise<KbDoc[]> {
   if (!scopes.length) return []
 
-  const [terms, dbResult] = await Promise.all([
-    extractSearchTerms(query),
-    supabase
-      .from('kb_documents')
-      .select('id, filename, scope, status, anthropic_file_id, tags, file_type')
-      .eq('status', 'approved')
-      .in('scope', scopes.map(s => s === 'student_success' ? 'global' : s)),
-  ])
+  const normalizedScopes = scopes.map(s => (s === 'student_success' ? 'global' : s))
 
-  if (!terms.length) return []
+  const { data, error } = await supabase
+    .from('kb_documents')
+    .select('id, filename, scope, status, anthropic_file_id, tags, file_type')
+    .eq('status', 'approved')
+    .in('scope', normalizedScopes)
 
-  const { data, error } = dbResult
   if (error || !data?.length) return []
 
-  const scored = data
-    .filter(d => d.anthropic_file_id)
-    .map(d => ({ score: scoreDoc(d as KbDoc, terms), doc: d as KbDoc }))
+  const docs = (data as KbDoc[]).filter(d => d.anthropic_file_id)
+  if (!docs.length) return []
+
+  const queryStems = tokenize(query)
+  if (!queryStems.size) return []
+
+  const scored = docs
+    .map(d => ({ score: scoreDoc(d, queryStems), doc: d }))
+    .filter(x => x.score >= 2)
     .sort((a, b) => b.score - a.score)
 
-  return scored.filter(x => x.score > 0).slice(0, topK).map(x => x.doc)
+  console.log('🔍 KB search for:', query, '→', scored.length, 'matching docs, top score:', scored[0]?.score ?? 0)
+
+  return scored.slice(0, topK).map(x => x.doc)
 }

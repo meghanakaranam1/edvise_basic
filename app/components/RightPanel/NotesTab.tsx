@@ -1,11 +1,25 @@
 'use client'
 import { useState } from 'react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import type { Note, ArtifactType } from './types'
 
 const ACTION_BTNS: { type: ArtifactType; icon: string; label: string; color: string; border: string; bg: string }[] = [
   { type: 'action_plan', icon: '📋', label: 'Action Plan', color: '#15803d', border: '#10B98133', bg: '#f0fdf4' },
   { type: 'agenda',      icon: '📅', label: 'Agenda',      color: '#1b6070', border: '#3E94A533', bg: '#f0f8fb' },
 ]
+
+function stripMarkdown(s: string): string {
+  return s
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/\*\*(.*?)\*\*/g, '$1')
+    .replace(/\*(.*?)\*/g, '$1')
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/`[^`]*`/g, '')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(/\n+/g, ' ')
+    .trim()
+}
 
 export default function NotesTab({
   notes,
@@ -78,7 +92,7 @@ export default function NotesTab({
                 }}
               >
                 <span style={{ fontSize: 12, fontWeight: 500, color: '#2A3B7C', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {note.content.replace(/<!--[\s\S]*?-->/g, '').trim().slice(0, 55)}…
+                  {stripMarkdown(note.content).slice(0, 55)}…
                 </span>
                 <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
                   <button
@@ -91,8 +105,8 @@ export default function NotesTab({
                 </div>
               </div>
               {open[note.id] && (
-                <div style={{ padding: '10px 12px', fontSize: 12, color: '#374151', lineHeight: 1.65, borderTop: '1px solid #e4e9f2', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-                  {note.content.replace(/<!--[\s\S]*?-->/g, '').trim()}
+                <div style={{ padding: '10px 12px', fontSize: 12, color: '#374151', lineHeight: 1.65, borderTop: '1px solid #e4e9f2' }}>
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{note.content.replace(/<!--[\s\S]*?-->/g, '').trim()}</ReactMarkdown>
                 </div>
               )}
             </div>

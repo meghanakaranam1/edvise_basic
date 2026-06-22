@@ -10,15 +10,16 @@ const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 type SimpleMessage = { role: "user" | "assistant"; content: string };
 
 export async function POST(req: NextRequest) {
-  const { messages, fileId, thresholdPrompt, columnMapping, kbScope }: {
+  const { messages, fileId, pdfFiles, thresholdPrompt, columnMapping, kbScope }: {
     messages: SimpleMessage[];
     fileId?: string;
+    pdfFiles?: { name: string; fileId: string }[];
     thresholdPrompt?: string;
     columnMapping?: Record<string, string>;
     kbScope?: string;
   } = await req.json();
 
-  // Parse source scope tokens
+  // Parse source scope tokens — KB/web run whenever their chips are active.
   const scopeTokens = (kbScope ?? '').split(',').map(s => s.trim()).filter(Boolean);
   const kbScopes = scopeTokens.filter(s => s === 'student_success' || s === 'school');
   const useWeb = scopeTokens.includes('web');
@@ -26,11 +27,17 @@ export async function POST(req: NextRequest) {
   // Last user message text (used for KB keyword matching + web query)
   const lastUserMsg = [...messages].reverse().find(m => m.role === 'user')?.content ?? '';
 
-  // Run KB search and web prefetch in parallel — both are no-ops when chips are off
-  const [kbDocs, webSources] = await Promise.all([
+  // Run KB search and web prefetch in parallel — driven purely by which chips
+  // are enabled. Relevance scoring (score > 0, no fallback) keeps unrelated
+  // questions from pulling docs, so no intent gating is needed.
+  const [kbDocs, webResult] = await Promise.all([
     kbScopes.length ? searchKB(lastUserMsg, kbScopes, 4) : Promise.resolve([]),
-    useWeb ? prefetchWeb(lastUserMsg) : Promise.resolve([]),
+    useWeb ? prefetchWeb(lastUserMsg) : Promise.resolve({ summary: '', sources: [] }),
   ]);
+  const webSources = webResult.sources;
+  console.log('🔍 KB scopes:', kbScopes, 'Web enabled:', useWeb);
+  console.log('📚 KB docs:', kbDocs.length, 'Web sources:', webSources.length);
+  if (webResult.summary) console.log('🌐 Web summary preview:', webResult.summary.slice(0, 200));
 
   let apiMessages: Anthropic.MessageParam[] = messages.map((m) => ({
     role: m.role,
@@ -39,18 +46,26 @@ export async function POST(req: NextRequest) {
 
   const lastUserIdx = apiMessages.map((m) => m.role).lastIndexOf("user");
 
-  if (fileId || kbDocs.length) {
+  if (fileId || kbDocs.length || pdfFiles?.length) {
     if (lastUserIdx >= 0) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const contentBlocks: any[] = [];
 
-      // Attach KB documents first (document blocks with citations)
+      // Attach teacher-uploaded PDFs first
+      for (const pdf of (pdfFiles ?? [])) {
+        contentBlocks.push({
+          type: 'document',
+          source: { type: 'file', file_id: pdf.fileId },
+          title: pdf.name.replace(/\.(pdf|txt|docx)$/i, ''),
+        });
+      }
+
+      // Attach KB documents (document blocks with citations)
       for (const doc of kbDocs) {
         contentBlocks.push({
           type: 'document',
           source: { type: 'file', file_id: doc.anthropic_file_id },
           title: doc.filename.replace(/_/g, ' ').replace(/\.(pdf|txt|docx)$/i, ''),
-          citations: { enabled: true },
         });
       }
 
@@ -75,11 +90,11 @@ export async function POST(req: NextRequest) {
     : '';
 
   const system = fileId
-    ? `You are Edvise, a teaching assistant. The teacher uploaded a gradebook CSV. Use code execution to answer every question with exact numbers from the data.
+    ? `You are Edvise, a teaching assistant. The teacher uploaded a gradebook CSV. Use code execution to answer every question with exact numbers from the data. Do not add numbered citations like [1] or [2] unless source documents are explicitly provided in this conversation.
 
 ${thresholdLine}${mappingLine ? '\n\n' + mappingLine : ''}
 
-When you output a card, always place the <!--CARD:--> marker FIRST on its own line, then write your 2–3 sentence follow-up below it. Never repeat numbers already visible in the card. For everything else — student lookups, comparisons, ad-hoc questions — reason as thoroughly as needed. Don't cut analysis short just to be brief.
+When you output a card, always place the <!--CARD:--> marker FIRST on its own line, then write your interpretation below it. Never repeat numbers already visible in the card — interpret them instead. For analysis responses (cards, comparisons, subgroup breakdowns), write 3–5 key takeaways using this format: lead each with a signal emoji (🚨 for urgent, 📈 for trends, 🔴 for high risk, ⚖️ for equity concerns, ✅ for positives), bold the headline, then 1–2 sentences of interpretation. Reason like an experienced instructional coach: go beyond describing what the numbers show to explaining what they imply — about root causes, about priority, about what this specific school should do first. Ground every insight in this school's actual data, not in generic research claims. Ask yourself: what does this number mean for a teacher looking at these students tomorrow morning? What does the pattern suggest about why this is happening? What would a thoughtful administrator notice that a spreadsheet wouldn't tell you? IMPORTANT: Before writing any comparison, do an explicit two-step check — (1) write down both raw numbers, (2) confirm which is numerically larger. Only then write the sentence. Re-read every sentence that contains words like "outpaces", "exceeds", "more than", "fewer than", "highest", "lowest", "largest", "smallest", "doubled", "most common" and verify the stated direction matches the numbers — if they conflict, rewrite the sentence before outputting it. Never describe a smaller number as larger or a larger number as smaller. For everything else — student lookups, ad-hoc questions — reason as thoroughly as needed.
 
 Before answering any per-student or per-record query, always check how many rows match and whether they represent the same person or different people (e.g. IDs that repeat across grade levels). Show what you found and present each distinct record separately.
 
@@ -165,13 +180,26 @@ Only use a markdown table when the teacher explicitly asks for a table, or for a
 ## On-demand sections
 Only output grade_comparison, subgroup, and sel_overview cards when the teacher explicitly asks for them. Never run them automatically.
 
-After every response, output ONE <!--SUGGEST:--> line. The first item must be the single most relevant next step (choose from: Grade breakdown, Subgroup analysis, SEL overview, Brainstorm interventions, Export roster). The remaining 2–3 items must be specific, natural-language questions the teacher is likely to want to ask next given what was just shown — not generic labels.
+## Guided foundational analysis — follow this sequence strictly
 
-Example after a risk overview:
-<!--SUGGEST: Grade breakdown | Which students have all 3 risk flags? | How many chronically absent students are also failing courses? | Who are the 10 most at-risk students?-->
+The foundational analysis has exactly 4 stages. After each stage card, write rich interpretation using the key-takeaway format (signal emoji + bold headline + 1–2 sentences with exact numbers). Aim for 3–5 takeaways that surface the most actionable insights — do not summarise what the card already shows visually, interpret it. Then close with one sentence inviting the next stage. End with exactly ONE <!--SUGGEST:--> line.
 
-Example after a subgroup card:
-<!--SUGGEST: Brainstorm interventions | How do ELL students compare on chronic absence vs academic failure? | Which race/ethnicity group has the highest suspension rate? | Are there gender differences in course failures?-->
+After **risk_overview** card: write 3–5 key takeaways interpreting what the numbers mean — dominant indicators, compounding risk, urgency. Close by inviting Stage 2.
+<!--SUGGEST: Grade breakdown-->
+
+After **grade_comparison** card: write 3–5 key takeaways on how risk differs across grades — which grade is most at-risk, which indicators shift most, what the trend signals. Close by inviting Stage 3.
+<!--SUGGEST: Subgroup analysis-->
+
+After **subgroup** card: write 3–5 key takeaways on equity patterns — highest-risk subgroups, disproportionality, intersections. Close by inviting Stage 4.
+<!--SUGGEST: SEL overview-->
+
+After **sel_overview** card: write 3–5 key takeaways on how at-risk students experience school differently through SEL. Close noting the analysis is complete.
+<!--SUGGEST: Brainstorm interventions[kb] | Which students have all 3 risk flags? | What can I do for students who are chronically absent AND failing courses?-->
+
+For all **other responses** (individual teacher questions, roster exports, follow-ups):
+End with one <!--SUGGEST:--> line. First item is the most relevant next action; remaining 1–2 items are specific natural-language questions the teacher is likely to ask — not generic labels.
+
+IMPORTANT: Whenever "Brainstorm interventions" appears in any SUGGEST line, it must be written as "Brainstorm interventions[kb]". Never add [kb] to any other suggestion.
 
 ## SEL / survey scale analysis
 When the teacher asks about SEL, wellbeing, engagement, or connectedness, use the column mapping to identify SEL scale columns. Run Python to:
@@ -185,26 +213,70 @@ Output on ONE line:
 
 Replace ALL example values with actual computed numbers. Include every SEL scale in the scales array.
 
-Always end every response with exactly one <!--SUGGEST:--> line following the pattern above.`
-    : "You are Edvise, a helpful teaching assistant. Ask the teacher to upload a gradebook CSV to get started.";
+Always end every response with exactly one <!--SUGGEST:--> line following the pattern above. EXCEPTION: brainstorm intervention responses use a fixed SUGGEST line defined below — do not generate your own.
 
-  // Build source context block appended to system prompt
+## Brainstorm interventions
+When asked to brainstorm interventions (message starting with "Please brainstorm targeted" or any similar phrasing):
+- Do NOT run code execution — use data already in the conversation context
+- Format: **Bold title** followed by 2–3 sentences. No tables, no tier headers, no priority sequences
+- Cite sources inline [1][2] etc.`
+    : `You are Edvise, a helpful assistant for teachers. Answer questions conversationally and naturally. Do not volunteer research or interventions unless the teacher explicitly asks for them.`;
+
+  // Build source context block appended to system prompt.
+  // PDFs and KB/web have separate citation rules so Claude doesn't bleed PDF references
+  // into CSV data analysis responses.
+  const pdfCount = (pdfFiles ?? []).length;
   const allSources = [
+    ...(pdfFiles ?? []).map(f => f.name.replace(/\.(pdf|txt|docx)$/i, '')),
     ...kbDocs.map(d => d.filename.replace(/_/g, ' ').replace(/\.(pdf|txt|docx)$/i, '')),
     ...webSources.map(s => `${s.title} (${s.url})`),
   ]
-  const sourceBlock = allSources.length
-    ? `\n\nThe following resources are available — cite them inline by number whenever you draw on them (e.g., "Attendance improves with outreach [1]."). Use one or more citation numbers per paragraph that references these sources.\n` +
-      allSources.map((title, i) => `[${i + 1}] ${title}`).join('\n')
-    : '';
+  let sourceBlock = '';
+  if (allSources.length) {
+    sourceBlock += '\n\n**Available sources:**\n' + allSources.map((t, i) => `[${i + 1}] ${t}`).join('\n');
 
-  // Metadata to send to frontend so it can show source chips
+    if (pdfCount > 0) {
+      const range = pdfCount === 1 ? `[1]` : `[1]–[${pdfCount}]`;
+      sourceBlock += `\n\n**Teacher-uploaded documents** (${range}): These are silent reference materials. NEVER mention, acknowledge, announce, or cite them unless the teacher's message is explicitly asking about the document — e.g. "summarise the PDF", "what does this document say". Do NOT reference them in greetings, casual replies, CSV analysis, or any response where the teacher did not ask about the document. Do not tell the teacher what documents you can see.`;
+    }
+
+    const kbRange = kbDocs.length > 0 ? `[${pdfCount + 1}]${kbDocs.length > 1 ? `–[${pdfCount + kbDocs.length}]` : ''}` : '';
+    const webStart = pdfCount + kbDocs.length + 1;
+    const webEnd = allSources.length;
+    const webRange = webSources.length > 0 ? `[${webStart}]${webSources.length > 1 ? `–[${webEnd}]` : ''}` : '';
+
+    if (kbDocs.length > 0 && webSources.length > 0) {
+      // Both KB and web — write two clearly separated sections
+      sourceBlock += `\n\nBoth knowledge base documents and live web sources are available. Structure your response as two separate, standalone sections using these exact markers:
+
+<!--KB_START-->
+[A complete, high-quality answer drawing ONLY from the knowledge base documents ${kbRange}. Cite inline. Be thorough and analytical.]
+<!--KB_END-->
+
+<!--WEB_START-->
+[A complete, high-quality answer drawing ONLY from the web sources ${webRange}. Cite inline. Be thorough and analytical.]
+<!--WEB_END-->
+
+Each section must stand alone — do not cross-reference between sections. Only draw on these sources when the question is substantive (interventions, strategies, research). For greetings or CSV analysis, output nothing between the markers.`;
+    } else if (kbDocs.length > 0) {
+      sourceBlock += `\n\n**Knowledge base documents** (${kbRange}): Only draw on these when the question is substantive (interventions, strategies, evidence-based practices). Cite inline. For greetings or CSV analysis, do NOT reference these.`;
+    } else if (webSources.length > 0) {
+      sourceBlock += `\n\n**Web sources** (${webRange}): Only draw on these when the question is substantive. Cite inline.`;
+    }
+
+    if (webResult.summary) {
+      sourceBlock += `\n\nCurrent web information:\n${webResult.summary}`;
+    }
+  }
+
+  // sourceMeta order must match allSources order so citation numbers [N] align correctly.
   const sourceMeta = [
+    ...(pdfFiles ?? []).map(f => ({ title: f.name.replace(/\.(pdf|txt|docx)$/i, ''), kind: 'pdf' as const })),
     ...kbDocs.map(d => ({ title: d.filename.replace(/_/g, ' ').replace(/\.(pdf|txt|docx)$/i, ''), kind: 'kb' as const })),
     ...webSources.map(s => ({ title: s.title, url: s.url, kind: 'web' as const })),
   ];
 
-  const needsFilesApi = !!(fileId || kbDocs.length);
+  const needsFilesApi = !!(fileId || kbDocs.length || pdfFiles?.length);
 
   const stream = client.messages.stream(
     {

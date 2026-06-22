@@ -3,6 +3,8 @@ import { useRef, useState, useEffect } from 'react'
 import type { Thresholds } from './Cards/CriteriaSettingCard'
 import { describeThresholds } from './Cards/CriteriaSettingCard'
 
+export type SourceKey = 'student_success' | 'school' | 'general' | 'web'
+
 interface Props {
   onSend: (text: string, kbScope: string) => void
   onFileSelect: (file: File) => void
@@ -12,9 +14,14 @@ interface Props {
   thresholds?: Thresholds
   onChangeCriteria?: (t: Thresholds) => void
   csvPreview?: { columns: string[]; rows: Record<string, string>[] }
+  activeKB: SourceKey[]
+  onToggleSource: (key: SourceKey) => void
+  pdfFiles?: { name: string; fileId: string }[]
+  pdfUploading?: boolean
+  onPdfSelect?: (file: File) => void
+  onRemovePdf?: (fileId: string) => void
+  focusTrigger?: number
 }
-
-type SourceKey = 'student_success' | 'school' | 'general' | 'web'
 
 const SOURCES: { key: SourceKey; label: string; activeStyle: React.CSSProperties; inactiveStyle: React.CSSProperties }[] = [
   {
@@ -66,15 +73,22 @@ function dot(color: string): React.CSSProperties {
 export default function MessageInput({
   onSend, onFileSelect, disabled, fileLabel, onRemoveFile,
   thresholds, onChangeCriteria, csvPreview,
+  activeKB, onToggleSource,
+  pdfFiles, pdfUploading, onPdfSelect, onRemovePdf,
+  focusTrigger,
 }: Props) {
   const [text, setText] = useState('')
-  const [activeKB, setActiveKB] = useState<SourceKey[]>(['student_success', 'general'])
   const [showCriteria, setShowCriteria] = useState(false)
   const [showCsvPreview, setShowCsvPreview] = useState(false)
   const [editT, setEditT] = useState<Thresholds>({})
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const pdfInputRef = useRef<HTMLInputElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (focusTrigger) textareaRef.current?.focus()
+  }, [focusTrigger])
 
   // Sync edit state when popover opens
   function openCriteria() {
@@ -94,14 +108,9 @@ export default function MessageInput({
     return () => document.removeEventListener('mousedown', handle)
   }, [showCriteria])
 
-  function toggleSource(key: SourceKey) {
-    setActiveKB(prev => prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key])
-  }
-
   function getKbScope(): string {
     const order: SourceKey[] = ['student_success', 'school', 'general', 'web']
-    const selected = order.filter(k => activeKB.includes(k))
-    return selected.join(',') || 'general'
+    return order.filter(k => activeKB.includes(k)).join(',')
   }
 
   function handleSubmit() {
@@ -266,21 +275,45 @@ export default function MessageInput({
         </div>
       )}
 
-      {/* File chip + criteria chip row */}
-      {fileLabel && (
+      {/* File chip + PDF chips + criteria chip row */}
+      {(fileLabel || (pdfFiles && pdfFiles.length > 0) || pdfUploading) && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8, flexWrap: 'wrap' }}>
-          <div className="file-chip" style={{ cursor: csvPreview ? 'pointer' : 'default' }} onClick={() => csvPreview && setShowCsvPreview(true)}>
-            <svg viewBox="0 0 24 24" fill="none" stroke="#3E94A5" strokeWidth="2" width="13" height="13">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-              <polyline points="14 2 14 8 20 8"/>
-            </svg>
-            {fileLabel}
-            {onRemoveFile && (
-              <button type="button" onClick={e => { e.stopPropagation(); onRemoveFile() }} title="Remove file">✕</button>
-            )}
-          </div>
+          {fileLabel && (
+            <div className="file-chip" style={{ cursor: csvPreview ? 'pointer' : 'default' }} onClick={() => csvPreview && setShowCsvPreview(true)}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="#3E94A5" strokeWidth="2" width="13" height="13">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                <polyline points="14 2 14 8 20 8"/>
+              </svg>
+              {fileLabel}
+              {onRemoveFile && (
+                <button type="button" onClick={e => { e.stopPropagation(); onRemoveFile() }} title="Remove file">✕</button>
+              )}
+            </div>
+          )}
 
-          {thresholds && onChangeCriteria && (
+          {pdfFiles?.map(f => (
+            <div key={f.fileId} className="file-chip" style={{ background: '#faf5ff', borderColor: '#d8b4fe' }}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="#7c3aed" strokeWidth="2" width="13" height="13">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                <polyline points="14 2 14 8 20 8"/>
+                <line x1="16" y1="13" x2="8" y2="13"/>
+                <line x1="16" y1="17" x2="8" y2="17"/>
+              </svg>
+              <span style={{ color: '#5b21b6', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</span>
+              {onRemovePdf && (
+                <button type="button" onClick={() => onRemovePdf(f.fileId)} title="Remove PDF">✕</button>
+              )}
+            </div>
+          ))}
+
+          {pdfUploading && (
+            <div className="file-chip" style={{ background: '#faf5ff', borderColor: '#d8b4fe', color: '#7c3aed' }}>
+              <div style={{ width: 10, height: 10, border: '2px solid #7c3aed', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.7s linear infinite', flexShrink: 0 }} />
+              Uploading…
+            </div>
+          )}
+
+          {fileLabel && thresholds && onChangeCriteria && (
             <button
               type="button"
               onClick={openCriteria}
@@ -308,7 +341,7 @@ export default function MessageInput({
           <button
             key={s.key}
             type="button"
-            onClick={() => toggleSource(s.key)}
+            onClick={() => onToggleSource(s.key)}
             style={{ ...chipBase, ...(activeKB.includes(s.key) ? s.activeStyle : s.inactiveStyle) }}
           >
             {s.label}
@@ -340,6 +373,24 @@ export default function MessageInput({
               <line x1="12" y1="3" x2="12" y2="15"/>
             </svg>
           </button>
+          {onPdfSelect && (
+            <button
+              type="button"
+              className="icon-btn"
+              title="Upload PDF document"
+              onClick={() => pdfInputRef.current?.click()}
+              disabled={disabled || pdfUploading}
+              style={{ color: '#7c3aed' }}
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                <polyline points="14 2 14 8 20 8"/>
+                <line x1="16" y1="13" x2="8" y2="13"/>
+                <line x1="16" y1="17" x2="8" y2="17"/>
+                <polyline points="10 9 9 9 8 9"/>
+              </svg>
+            </button>
+          )}
           <button
             type="button"
             className="send-btn"
@@ -361,6 +412,19 @@ export default function MessageInput({
         style={{ display: 'none' }}
         onChange={(e) => {
           if (e.target.files?.[0]) onFileSelect(e.target.files[0])
+          e.target.value = ''
+        }}
+      />
+      <input
+        ref={pdfInputRef}
+        type="file"
+        accept=".pdf"
+        multiple
+        style={{ display: 'none' }}
+        onChange={(e) => {
+          if (e.target.files) {
+            Array.from(e.target.files).forEach(f => onPdfSelect?.(f))
+          }
           e.target.value = ''
         }}
       />

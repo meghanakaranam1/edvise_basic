@@ -33,7 +33,7 @@ function StatBox({ label, value, sub, accent }: {
   )
 }
 
-function IndicatorRow({ ind, max }: { ind: Indicator; max: number }) {
+function IndicatorRow({ ind }: { ind: Indicator }) {
   return (
     <div style={{ marginBottom: 10 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 4 }}>
@@ -41,13 +41,13 @@ function IndicatorRow({ ind, max }: { ind: Indicator; max: number }) {
         <span style={{ color: '#2A3B7C' }}>{ind.count.toLocaleString()} ({ind.pct}%)</span>
       </div>
       <div style={{ height: 7, background: '#eef2f8', borderRadius: 999, overflow: 'hidden' }}>
-        <div style={{ width: `${max > 0 ? (ind.pct / max) * 100 : 0}%`, height: '100%', borderRadius: 999, background: ind.color, opacity: 0.85 }} />
+        <div style={{ width: `${ind.pct}%`, height: '100%', borderRadius: 999, background: ind.color, opacity: 0.85 }} />
       </div>
     </div>
   )
 }
 
-function ComboRow({ combo, max }: { combo: Combination; max: number }) {
+function ComboRow({ combo }: { combo: Combination }) {
   return (
     <div style={{ marginBottom: 8 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 4 }}>
@@ -55,7 +55,7 @@ function ComboRow({ combo, max }: { combo: Combination; max: number }) {
         <span style={{ color: '#2A3B7C' }}>{combo.count.toLocaleString()} ({combo.pct}%)</span>
       </div>
       <div style={{ height: 7, background: '#eef2f8', borderRadius: 999, overflow: 'hidden' }}>
-        <div style={{ width: `${max > 0 ? (combo.count / max) * 100 : 0}%`, height: '100%', borderRadius: 999, background: '#2A3B7C', opacity: 0.6 }} />
+        <div style={{ width: `${combo.pct}%`, height: '100%', borderRadius: 999, background: '#2A3B7C', opacity: 0.6 }} />
       </div>
     </div>
   )
@@ -70,8 +70,6 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 }
 
 export function RiskBody({ data, scope = 'school' }: { data: RiskOverviewData; scope?: string }) {
-  const maxIndPct = Math.max(...(data.indicators ?? []).map((i) => i.pct), 1)
-  const maxCombo = Math.max(...(data.combinations ?? []).map((c) => c.count), 1)
   const two = data.two_or_more
   const three = data.all_three
 
@@ -87,7 +85,7 @@ export function RiskBody({ data, scope = 'school' }: { data: RiskOverviewData; s
       <div style={{ border: '1px solid #f0f3fa', borderRadius: 10, padding: 10, marginBottom: 10 }}>
         <SectionLabel>Risk indicators</SectionLabel>
         {data.indicators.map((ind) => (
-          <IndicatorRow key={ind.name} ind={ind} max={maxIndPct} />
+          <IndicatorRow key={ind.name} ind={ind} />
         ))}
       </div>
 
@@ -106,7 +104,7 @@ export function RiskBody({ data, scope = 'school' }: { data: RiskOverviewData; s
           </div>
         </div>
         {data.combinations.map((c) => (
-          <ComboRow key={c.label} combo={c} max={maxCombo} />
+          <ComboRow key={c.label} combo={c} />
         ))}
       </div>
     </>

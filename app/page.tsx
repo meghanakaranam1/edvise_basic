@@ -2,14 +2,16 @@
 import { useRef, useState, useEffect } from 'react'
 import './globals.css'
 import MessageList, { type Message } from './components/MessageList'
-import MessageInput from './components/MessageInput'
+import MessageInput, { type SourceKey } from './components/MessageInput'
 import { uploadFile, streamChat, generateArtifact } from './lib/api'
 import RightPanel from './components/RightPanel/RightPanel'
 import Sidebar, { type MainView } from './components/Sidebar/Sidebar'
 import LoginPage from './components/Auth/LoginPage'
 import SavedView from './components/SavedView'
+import ConversationsView from './components/ConversationsView'
 import AdminKB from './components/AdminKB'
-import type { Note, ArtifactType, Artifacts } from './components/RightPanel/types'
+import type { Note, ArtifactType, Artifacts, Report } from './components/RightPanel/types'
+import { ReportDetail } from './components/RightPanel/ReportTab'
 import { parseCsv } from './lib/csvUtils'
 import type { Thresholds } from './components/Cards/CriteriaSettingCard'
 import { thresholdPrompt } from './components/Cards/CriteriaSettingCard'
@@ -25,9 +27,10 @@ import {
 
 type Phase = 'idle' | 'confirming' | 'criteria' | 'chatting'
 
-const LIBRARY_VIEWS = new Set(['library-all', 'library-strategy', 'library-reports', 'library-pending'])
+const LIBRARY_VIEWS = new Set(['library-kb', 'library-all', 'library-strategy', 'library-reports', 'library-pending'])
 const ACTIONS_VIEWS = new Set(['actions-plans', 'actions-agendas', 'actions-reports'])
 const SETTINGS_VIEWS = new Set(['settings', 'kb'])
+const CONVERSATIONS_VIEW = 'conversations'
 
 export default function Page() {
   // Auth
@@ -42,6 +45,8 @@ export default function Page() {
   const [thresholds, setThresholds] = useState<Thresholds | undefined>()
   const [columnMapping, setColumnMapping] = useState<Record<string, string> | undefined>()
   const [csvPreview, setCsvPreview] = useState<{ columns: string[]; rows: Record<string, string>[] } | undefined>()
+  const [columnUniques, setColumnUniques] = useState<Record<string, string[]> | undefined>()
+  const indicatorsRef = useRef<import('./api/suggest-columns/route').Indicators>({})
   const fileIdRef = useRef<string | undefined>(undefined)
   const apiMessages = useRef<{ role: 'user' | 'assistant'; content: string }[]>([])
   const conversationIdRef = useRef<string | undefined>(undefined)
@@ -52,12 +57,28 @@ export default function Page() {
   const [activeConversationId, setActiveConversationId] = useState<string | undefined>()
   const [savedCounts, setSavedCounts] = useState({ action_plan: 0, agenda: 0, report: 0 })
 
+  // Teacher-uploaded PDFs (in-memory for this session only)
+  const [pdfFiles, setPdfFiles] = useState<{ name: string; fileId: string }[]>([])
+  const [pdfUploading, setPdfUploading] = useState(false)
+
+  // Lets the welcome page's "I have my own questions" card focus the textarea
+  const [inputFocusTrigger, setInputFocusTrigger] = useState(0)
+
+  // KB chip state — lifted here so suggestion clicks use the same chips as typed messages
+  const [activeKB, setActiveKB] = useState<SourceKey[]>(['student_success', 'general'])
+
+  function getKbScope(): string {
+    const order: SourceKey[] = ['student_success', 'school', 'general', 'web']
+    return order.filter(k => activeKB.includes(k)).join(',')
+  }
+
   // Right panel
   const [panelOpen, setPanelOpen] = useState(false)
   const [panelExpanded, setPanelExpanded] = useState(false)
   const [panelTab, setPanelTab] = useState('notes')
   const [notes, setNotes] = useState<Note[]>([])
   const [artifacts, setArtifacts] = useState<Artifacts>({})
+  const [reportModal, setReportModal] = useState<{ report: Report; date: string; isNew: boolean } | null>(null)
   const [generating, setGenerating] = useState<string | null>(null)
 
   // Load auth session
@@ -142,7 +163,7 @@ export default function Page() {
     })
   }
 
-  async function doSend(userText: string, kbScope = 'student_success,general', thresholdsOverride?: Thresholds) {
+  async function doSend(userText: string, kbScope = '', thresholdsOverride?: Thresholds, hidden = false) {
     if (isStreaming) return
     setMainView('chat')
 
@@ -157,7 +178,7 @@ export default function Page() {
       } catch (err) { console.error('createConversation failed:', err) }
     }
 
-    addMessage({ role: 'user', content: userText })
+    if (!hidden) addMessage({ role: 'user', content: userText })
     apiMessages.current.push({ role: 'user', content: userText })
     addMessage({ role: 'assistant', content: '' })
     setIsStreaming(true)
@@ -174,7 +195,8 @@ export default function Page() {
       await streamChat({
         messages: apiMessages.current,
         fileId: fileIdRef.current,
-        thresholdPrompt: activeThresholds ? thresholdPrompt(activeThresholds) : undefined,
+        pdfFiles: pdfFiles.length ? pdfFiles : undefined,
+        thresholdPrompt: activeThresholds ? thresholdPrompt(activeThresholds, indicatorsRef.current) : undefined,
         columnMapping: columnMapping ?? undefined,
         kbScope,
         onChunk(text) {
@@ -211,6 +233,22 @@ export default function Page() {
     }
   }
 
+  async function handlePdfSelect(file: File) {
+    setPdfUploading(true)
+    try {
+      const { fileId: id } = await uploadFile(file)
+      setPdfFiles(prev => [...prev, { name: file.name, fileId: id }])
+    } catch (err) {
+      console.error('PDF upload failed:', err)
+    } finally {
+      setPdfUploading(false)
+    }
+  }
+
+  function handleRemovePdf(fileId: string) {
+    setPdfFiles(prev => prev.filter(f => f.fileId !== fileId))
+  }
+
   async function handleFileSelect(file: File) {
     setMessages([])
     apiMessages.current = []
@@ -221,6 +259,8 @@ export default function Page() {
     setThresholds(undefined)
     setColumnMapping(undefined)
     setCsvPreview(undefined)
+    setColumnUniques(undefined)
+    indicatorsRef.current = {}
     setFileLabel(`Reading ${file.name}…`)
     addMessage({ role: 'assistant', isLoading: true })
 
@@ -229,18 +269,26 @@ export default function Page() {
       fileIdRef.current = id
       setFileLabel(meta.filename)
       setCsvPreview({ columns: meta.columns, rows: meta.preview })
+      setColumnUniques(meta.columnUniques)
 
-      // Ask Claude to suggest human-readable labels for all columns
+      // Ask Claude to suggest human-readable labels and classify risk indicator columns
       let suggestedLabels: Record<string, string> = {}
+      let detectedIndicators: import('./api/suggest-columns/route').Indicators = {}
       try {
         const res = await fetch('/api/suggest-columns', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ columns: meta.columns }),
+          body: JSON.stringify({ columns: meta.columns, preview: meta.preview }),
         })
-        if (res.ok) suggestedLabels = await res.json()
+        if (res.ok) {
+          const body = await res.json()
+          suggestedLabels = body.labels ?? body  // backward-compat if labels is missing
+          detectedIndicators = body.indicators ?? {}
+        }
       } catch { /* non-fatal — card falls back to title-case */ }
 
+      indicatorsRef.current = detectedIndicators
+      console.log('📊 Detected indicators:', detectedIndicators)
       setMessages(prev => prev.filter(m => !('isLoading' in m)))
       setPhase('confirming')
       addMessage({ role: 'card', type: 'data_confirm', data: { ...meta, suggestedLabels }, onConfirm: handleColumnsConfirmed })
@@ -254,18 +302,18 @@ export default function Page() {
   function handleColumnsConfirmed(mapping: Record<string, string>) {
     setColumnMapping(mapping)
     setPhase('criteria')
-    addMessage({ role: 'card', type: 'criteria', columnMapping: mapping, onConfirm: handleCriteriaConfirmed })
+    addMessage({ role: 'card', type: 'criteria', columnMapping: mapping, columnUniques: columnUniques ?? {}, indicators: indicatorsRef.current, onConfirm: handleCriteriaConfirmed })
   }
 
   function handleCriteriaConfirmed(t: Thresholds) {
     setThresholds(t)
     setPhase('chatting')
-    doSend('Run the school-wide risk overview.', 'student_success,general', t)
+    doSend('Run the school-wide risk overview.', '', t)
   }
 
   function handleChangeCriteria(t: Thresholds) {
     setThresholds(t)
-    doSend('Re-run the school-wide risk overview with the updated criteria.', 'student_success,general', t)
+    doSend('Re-run the school-wide risk overview with the updated criteria.', '', t)
   }
 
   async function handleSelectConversation(id: string) {
@@ -298,13 +346,111 @@ export default function Page() {
     setActiveConversationId(undefined)
     setThresholds(undefined)
     setCsvPreview(undefined)
+    setColumnUniques(undefined)
     setFileLabel(undefined)
+    setPdfFiles([])
     setMainView('chat')
   }
 
   function handleSend(text: string, kbScope?: string) {
     if (phase === 'confirming' || phase === 'criteria') return
-    doSend(text, kbScope)
+    if (text === 'Brainstorm interventions') {
+      showBrainstormCard()
+      return
+    }
+    if (text === 'Run foundational analysis') {
+      if (!fileIdRef.current) {
+        addMessage({
+          role: 'assistant',
+          content: `The foundational analysis walks through **4 stages**:\n\n1. **Risk Overview** — school-wide picture of how many students carry risk flags\n2. **Grade Breakdown** — where risk is most concentrated by grade level\n3. **Subgroup Analysis** — equity patterns across race/ethnicity, ELL status, and gender\n4. **SEL Analysis** — how at-risk students experience school through engagement, connectedness, and wellbeing\n\nUpload your gradebook CSV below to begin.`,
+        })
+        setInputFocusTrigger(n => n + 1)
+        return
+      }
+      addMessage({
+        role: 'assistant',
+        content: `The foundational analysis walks through **4 stages**:\n\n1. **Risk Overview** — school-wide picture of how many students carry risk flags\n2. **Grade Breakdown** — where risk is most concentrated by grade level\n3. **Subgroup Analysis** — equity patterns across race/ethnicity, ELL status, and gender\n4. **SEL Analysis** — how at-risk students experience school through engagement, connectedness, and wellbeing\n\nStarting with Stage 1 now.`,
+      })
+      doSend('Run the school-wide risk overview.', '')
+      return
+    }
+    if (text === 'I have my own questions') {
+      addMessage({ role: 'assistant', content: "Go ahead — ask anything. You can upload a CSV, a PDF, or just type your question." })
+      setInputFocusTrigger(n => n + 1)
+      return
+    }
+    doSend(text, kbScope ?? getKbScope())
+  }
+
+  function showBrainstormCard() {
+    // Grade levels: read from actual data via the column whose label contains "grade"
+    const gradeOptions: string[] = (() => {
+      if (!columnUniques || !columnMapping) return ['All grades']
+      const gradeKey = Object.entries(columnMapping).find(([, label]) =>
+        /\bgrade\b/i.test(label)
+      )?.[0]
+      if (!gradeKey) return ['All grades']
+      const vals = (columnUniques[gradeKey] ?? [])
+        .filter(Boolean)
+        .sort((a, b) => {
+          const na = parseFloat(a), nb = parseFloat(b)
+          return isNaN(na) || isNaN(nb) ? a.localeCompare(b) : na - nb
+        })
+      return vals.length ? [...vals, 'All grades'] : ['All grades']
+    })()
+
+    // Subgroups: only show options for demographic columns that actually exist
+    const subgroupOptions: string[] = (() => {
+      const opts: string[] = []
+      if (!columnMapping) {
+        return ['ELL students', 'Hispanic students', 'Special Education students', 'Black students', 'Male students', 'All flagged students']
+      }
+      const labels = Object.values(columnMapping).map(l => l.toLowerCase())
+      if (labels.some(l => /race|ethnicity/i.test(l))) opts.push('Hispanic students', 'Black students', 'White students')
+      if (labels.some(l => /gender|sex\b/i.test(l))) opts.push('Male students', 'Female students')
+      if (labels.some(l => /special.ed|sped|\biep\b/i.test(l))) opts.push('Special Education students')
+      if (labels.some(l => /\bell\b|english.learn|esl/i.test(l))) opts.push('ELL students')
+      opts.push('All flagged students')
+      return opts.length > 1 ? opts : ['ELL students', 'Hispanic students', 'Special Education students', 'Black students', 'Male students', 'All flagged students']
+    })()
+
+    // Indicators: only show the ones configured in thresholds
+    const indicatorOptions: string[] = (() => {
+      const opts: string[] = []
+      if (!thresholds) return ['Academic Failure', 'Chronic Absence', 'Suspensions / Behavior', 'All risk indicators']
+      if (thresholds.absencePct != null || thresholds.absenceDays != null) opts.push('Chronic Absence')
+      if (thresholds.suspensionMin != null) opts.push('Suspensions / Behavior')
+      if (thresholds.failingGrade != null || thresholds.failingCount != null) opts.push('Academic Failure')
+      if (opts.length > 1) opts.push('All risk indicators')
+      return opts.length ? opts : ['Academic Failure', 'Chronic Absence', 'Suspensions / Behavior', 'All risk indicators']
+    })()
+
+    addMessage({
+      role: 'card',
+      type: 'brainstorm_q',
+      data: {
+        questions: [
+          { id: 'subgroup', label: 'Which subgroup(s) would you like to focus on?', options: subgroupOptions },
+          { id: 'indicator', label: 'Which risk indicator(s) are your priority?', options: indicatorOptions },
+          { id: 'grade', label: 'Which grade levels?', options: gradeOptions },
+          { id: 'resources', label: 'What resources or constraints should I keep in mind?', options: ['Limited counselor capacity', 'Budget constraints', 'Existing programs in place', 'Community partnerships available', 'No constraints'] },
+        ],
+      },
+      onSubmit: handleBrainstormSubmit,
+    })
+  }
+
+  function handleSuggestionClick(text: string, needsKB: boolean) {
+    if (phase === 'confirming' || phase === 'criteria') return
+    if (text === 'Brainstorm interventions') {
+      showBrainstormCard()
+      return
+    }
+    doSend(text, needsKB ? getKbScope() : '')
+  }
+
+  function handleBrainstormSubmit(text: string) {
+    doSend(text, getKbScope(), undefined, true)
   }
 
   function handleRemoveFile() {
@@ -312,6 +458,7 @@ export default function Page() {
     setFileLabel(undefined)
     setThresholds(undefined)
     setCsvPreview(undefined)
+    setColumnUniques(undefined)
     setPhase('idle')
     setMessages([])
     apiMessages.current = []
@@ -327,23 +474,14 @@ export default function Page() {
     setNotes(prev => prev.filter(n => n.id !== id))
   }
 
-  async function handleGenerate(type: ArtifactType) {
+  async function handleGenerate(type: ArtifactType, noteIds?: string[], reportTemplate?: string) {
     setGenerating(type)
     try {
-      const result = await generateArtifact(type, apiMessages.current)
+      const selectedNotes = noteIds
+        ? notes.filter(n => noteIds.includes(n.id))
+        : notes
+      const result = await generateArtifact(type, apiMessages.current, selectedNotes, reportTemplate)
       setArtifacts(prev => ({ ...prev, [type]: result }))
-
-      // Auto-save to Supabase
-      if (session) {
-        const tableMap: Record<ArtifactType, 'action_plans' | 'meeting_agendas' | 'reports'> = {
-          action_plan: 'action_plans',
-          agenda: 'meeting_agendas',
-          report: 'reports',
-        }
-        const title = type === 'action_plan' ? 'Action Plan' : type === 'agenda' ? 'Meeting Agenda' : 'Report'
-        await saveArtifact(tableMap[type], title, result).catch(() => {})
-        setSidebarRefreshKey(k => k + 1)
-      }
     } catch (err) {
       console.error('Artifact generation failed:', err)
     } finally {
@@ -351,8 +489,23 @@ export default function Page() {
     }
   }
 
+  async function handleSaveArtifact(type: ArtifactType) {
+    if (!session || !artifacts[type]) return
+    const tableMap: Record<ArtifactType, 'action_plans' | 'meeting_agendas' | 'reports'> = {
+      action_plan: 'action_plans', agenda: 'meeting_agendas', report: 'reports',
+    }
+    const art = artifacts[type] as { title?: string }
+    const title = art.title ?? (type === 'action_plan' ? 'Action Plan' : type === 'agenda' ? 'Meeting Agenda' : 'Report')
+    await saveArtifact(tableMap[type], title, artifacts[type]).catch(() => {})
+    setSidebarRefreshKey(k => k + 1)
+  }
+
+  function handleDiscardArtifact(type: ArtifactType) {
+    setArtifacts(prev => ({ ...prev, [type]: undefined }))
+  }
+
   const inputDisabled = isStreaming || phase === 'confirming' || phase === 'criteria'
-  const isNonChatView = LIBRARY_VIEWS.has(mainView) || ACTIONS_VIEWS.has(mainView) || SETTINGS_VIEWS.has(mainView)
+  const isNonChatView = LIBRARY_VIEWS.has(mainView) || ACTIONS_VIEWS.has(mainView) || SETTINGS_VIEWS.has(mainView) || mainView === CONVERSATIONS_VIEW
 
   if (authLoading) {
     return (
@@ -378,17 +531,23 @@ export default function Page() {
         activeConversationId={activeConversationId}
         refreshKey={sidebarRefreshKey}
         savedCounts={savedCounts}
+        notesCount={notes.length}
       />
 
       {/* Main area */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
         {isNonChatView ? (
           /* Library / Actions / Settings views */
-          mainView === 'settings' ? (
+          mainView === CONVERSATIONS_VIEW ? (
+            <ConversationsView
+              onSelect={id => { handleSelectConversation(id); setMainView('chat') }}
+              onNewChat={() => { handleNewChat(); setMainView('chat') }}
+            />
+          ) : mainView === 'settings' ? (
             <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: 14 }}>
               Settings coming soon
             </div>
-          ) : mainView === 'kb' ? (
+          ) : mainView === 'kb' || mainView === 'library-kb' ? (
             <AdminKB session={session} />
           ) : mainView === 'library-pending' ? (
             <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: 14 }}>
@@ -428,7 +587,8 @@ export default function Page() {
               messages={messages}
               isStreaming={isStreaming}
               onStarterClick={handleSend}
-              onSuggestionClick={handleSend}
+              onSuggestionClick={handleSuggestionClick}
+              onFocusInput={() => setInputFocusTrigger(n => n + 1)}
               onAddNote={addNote}
             />
 
@@ -441,6 +601,13 @@ export default function Page() {
               thresholds={thresholds}
               onChangeCriteria={handleChangeCriteria}
               csvPreview={csvPreview}
+              activeKB={activeKB}
+              onToggleSource={k => setActiveKB(prev => prev.includes(k) ? prev.filter(x => x !== k) : [...prev, k])}
+              pdfFiles={pdfFiles}
+              pdfUploading={pdfUploading}
+              onPdfSelect={handlePdfSelect}
+              onRemovePdf={handleRemovePdf}
+              focusTrigger={inputFocusTrigger}
             />
           </>
         )}
@@ -458,7 +625,40 @@ export default function Page() {
         artifacts={artifacts}
         generating={generating}
         onGenerate={handleGenerate}
+        onSave={handleSaveArtifact}
+        onDiscard={handleDiscardArtifact}
+        onOpenReportModal={(report, date, isNew) => setReportModal({ report, date, isNew })}
       />
+
+      {/* Report modal */}
+      {reportModal && (
+        <div
+          onClick={e => { if (e.target === e.currentTarget) setReportModal(null) }}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
+        >
+          <div style={{ background: 'white', borderRadius: 14, width: '100%', maxWidth: 720, height: '88vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 24px 64px rgba(0,0,0,0.2)' }}>
+            {/* Modal header */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '10px 14px', borderBottom: '1px solid #f0f2f8', flexShrink: 0 }}>
+              <button
+                onClick={() => setReportModal(null)}
+                style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#9ca3af', fontSize: 18, lineHeight: 1, padding: '2px 6px' }}
+              >
+                ×
+              </button>
+            </div>
+            {/* Report content */}
+            <div style={{ flex: 1, overflow: 'hidden', padding: '0 24px' }}>
+              <ReportDetail
+                report={reportModal.report}
+                date={reportModal.date}
+                onClose={() => setReportModal(null)}
+                onSave={reportModal.isNew ? () => handleSaveArtifact('report') : undefined}
+                onDiscard={reportModal.isNew ? () => { handleDiscardArtifact('report'); setReportModal(null) } : undefined}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

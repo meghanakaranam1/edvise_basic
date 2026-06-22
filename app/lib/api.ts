@@ -1,11 +1,13 @@
 export async function generateArtifact(
   type: 'action_plan' | 'agenda' | 'report',
-  messages: { role: string; content: string }[]
+  messages: { role: string; content: string }[],
+  notes?: { id: string; content: string }[],
+  reportTemplate?: string
 ): Promise<unknown> {
   const res = await fetch('/api/artifact', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ type, messages }),
+    body: JSON.stringify({ type, messages, notes, reportTemplate }),
   })
   if (!res.ok) throw new Error(await res.text())
   return res.json()
@@ -22,6 +24,7 @@ export async function uploadFile(file: File): Promise<{ fileId: string }> {
 export async function streamChat({
   messages,
   fileId,
+  pdfFiles,
   thresholdPrompt,
   columnMapping,
   kbScope,
@@ -33,6 +36,7 @@ export async function streamChat({
 }: {
   messages: { role: 'user' | 'assistant'; content: string }[]
   fileId?: string
+  pdfFiles?: { name: string; fileId: string }[]
   thresholdPrompt?: string
   columnMapping?: Record<string, string>
   kbScope?: string
@@ -45,7 +49,7 @@ export async function streamChat({
   const res = await fetch('/api/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ messages, fileId, thresholdPrompt, columnMapping, kbScope }),
+    body: JSON.stringify({ messages, fileId, pdfFiles, thresholdPrompt, columnMapping, kbScope }),
   })
   if (!res.ok) throw new Error(await res.text())
 

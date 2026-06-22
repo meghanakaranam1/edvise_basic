@@ -40,8 +40,6 @@ function Pill({ abbrev }: { abbrev: string }) {
 
 function GroupRow({ group, initOpen }: { group: Group; initOpen: boolean }) {
   const [open, setOpen] = useState(initOpen)
-  const maxIndPct = Math.max(...group.indicators.map((i) => i.pct), 1)
-  const maxCombCount = Math.max(...group.combinations.map((c) => c.count), group.all_three?.count ?? 0, 1)
   const isHighRisk = group.any_flag_pct > 30
 
   return (
@@ -78,12 +76,11 @@ function GroupRow({ group, initOpen }: { group: Group; initOpen: boolean }) {
               <div style={{ fontSize: 12, fontWeight: 600, color: '#2A3B7C' }}>Risk indicators (any students with each flag)</div>
             </div>
             {group.indicators.map((ind) => {
-              const barPct = maxIndPct > 0 ? (ind.pct / maxIndPct) * 100 : 0
               return (
                 <div key={ind.name} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderBottom: '1px solid #f9fafc' }}>
                   <div style={{ width: 130, fontSize: 12, color: '#2A3B7C', fontWeight: 600, flexShrink: 0 }}>{ind.name}</div>
                   <div style={{ flex: 1, background: '#f0f3fa', borderRadius: 2, height: 8, overflow: 'hidden' }}>
-                    <div style={{ width: `${barPct}%`, height: '100%', background: ind.color, borderRadius: 2 }} />
+                    <div style={{ width: `${ind.pct}%`, height: '100%', background: ind.color, borderRadius: 2 }} />
                   </div>
                   <div style={{ fontSize: 11, color: '#2A3B7C', fontFamily: 'monospace', width: 80, textAlign: 'right' }}>
                     {ind.count} · {ind.pct}%
@@ -107,14 +104,13 @@ function GroupRow({ group, initOpen }: { group: Group; initOpen: boolean }) {
             </div>
             {group.combinations.map((combo, i) => {
               const pills = pillsFromLabel(combo.label)
-              const barPct = group.n > 0 ? (combo.count / group.n) * 100 : 0
               return (
                 <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 10px', borderBottom: '1px solid #f9fafc' }}>
                   <div style={{ width: 110, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 3 }}>
                     {pills.map((p) => <Pill key={p} abbrev={p} />)}
                   </div>
                   <div style={{ flex: 1, background: '#f0f3fa', borderRadius: 2, height: 8, overflow: 'hidden' }}>
-                    <div style={{ width: `${barPct}%`, height: '100%', background: '#3E94A5', borderRadius: 2 }} />
+                    <div style={{ width: `${combo.pct}%`, height: '100%', background: '#3E94A5', borderRadius: 2 }} />
                   </div>
                   <div style={{ fontSize: 11, color: '#2A3B7C', fontFamily: 'monospace', width: 80, textAlign: 'right' }}>
                     {combo.count} · {combo.pct}%
