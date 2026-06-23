@@ -9,25 +9,23 @@ type ArtifactType = 'action_plan' | 'agenda' | 'report'
 
 const SCHEMAS: Record<ArtifactType, string> = {
   action_plan: `{
-  "title": "Tier 2 [Duration] Plan — [Target Group] ([Primary Risk])",
+  "title": "[Target Group] Intervention Plan ([Primary Risk])",
   "tags": ["Behavior", "Academic"],
   "summary": "2–3 sentence description of the target group and what this plan addresses",
-  "goal": "1–2 sentence measurable goal for this intervention period",
-  "target_date": "e.g. End of Week 2 (Day 10)",
+  "goal": "1–2 sentence measurable goal",
+  "target_date": "",
   "students": [],
   "steps": [
     {
       "id": "step_1",
-      "title": "Step title (timing, e.g. complete before Day 1)",
+      "title": "Step title",
       "bullets": [
-        "Specific action (Owner: Role; When: Day X; Time: Y minutes)",
-        "Another action (Owner: Role; When: Day X)"
+        "Specific action (Owner: Role)",
+        "Another action (Owner: Role)"
       ]
     }
   ],
-  "schedule": [
-    { "date_week": "Week 1 (Days 1–5)", "focus": "what happens this week", "lead": "ELA Teacher + Coach", "status": "Upcoming" }
-  ],
+  "schedule": [],
   "notes": ""
 }`,
   agenda: `{
@@ -70,9 +68,9 @@ const SCHEMAS: Record<ArtifactType, string> = {
 }
 
 const INSTRUCTIONS: Record<ArtifactType, string> = {
-  action_plan: 'Generate a detailed Tier 2 intervention action plan. Create 4–6 numbered intervention steps, each with a clear title (include timing like "Days 1–10" or "before Day 1") and 3–5 specific, actionable bullets. Each bullet must include Owner, When, and optionally Time/Cadence. Include a 3–4 row check-in schedule table. Tags should reflect the primary risk categories (e.g. Behavior, Academic, Attendance, Engagement). Make owners realistic: ELA Teacher, Counselor, Success Coach, Dean/AP, Admin.',
-  agenda: 'Generate a 60–90 min team meeting agenda to review the findings and coordinate next steps. Include 5–7 timed agenda items, each with a designated lead.',
-  report: 'Generate a comprehensive student support report. Each section must be rich markdown narrative prose with subsection headings (**bold**), bullet lists, and specific numbers from the data. Ground every claim in actual data from the conversation. The closing_actions must be 4–6 specific, time-bound priority items with named owners and deadlines.',
+  action_plan: 'Generate a detailed Tier 2 intervention action plan. The teacher\'s saved notes are the PRIMARY source — the steps, strategies, and specific details in the notes must directly appear in the plan. Do not invent generic steps that are not grounded in the notes or conversation. Create 4–6 numbered intervention steps, each with a clear title and 3–5 specific, actionable bullets drawn from the notes. Each bullet must include Owner. Leave target_date and schedule empty — do NOT add any dates, timelines, phases, or day/week counts unless the teacher explicitly asked for them. Tags should reflect the primary risk categories (e.g. Behavior, Academic, Attendance, Engagement). Make owners realistic: ELA Teacher, Counselor, Success Coach, Dean/AP, Admin.',
+  agenda: 'Generate a 60–90 min team meeting agenda. The teacher\'s saved notes are the PRIMARY source — the agenda items, discussion points, and focus areas must reflect what is in the notes. Do not invent generic agenda items not grounded in the notes or conversation. Include 5–7 timed agenda items, each with a designated lead and specific detail drawn from the notes.',
+  report: 'Generate a comprehensive student support report. The teacher\'s saved notes are the PRIMARY source — the strategies, findings, and specific details in the notes must appear in the report sections. Do not invent generic content not grounded in the notes or conversation. Each section must be rich markdown narrative prose with subsection headings (**bold**), bullet lists, and specific numbers from the data. The closing_actions must be 4–6 specific priority items with named owners, drawn directly from the notes.',
 }
 
 const FAMILY_LETTER_SCHEMA = `{
@@ -132,7 +130,7 @@ export async function POST(req: NextRequest) {
 
 Return ONLY valid JSON — no markdown fences, no explanation, no extra text. Match this schema exactly:
 ${schemaWithTemplate}`,
-    messages: [{ role: 'user', content: `Conversation:\n\n${context}${notesBlock}\n\nGenerate the ${type.replace('_', ' ')}.` }],
+    messages: [{ role: 'user', content: `${notesBlock ? `Teacher's saved notes (use these as the primary source):\n${notesBlock.trim()}\n\n` : ''}Conversation context:\n\n${context}\n\nGenerate the ${type.replace('_', ' ')}.` }],
   })
 
   const raw = response.content[0].type === 'text' ? response.content[0].text : ''
