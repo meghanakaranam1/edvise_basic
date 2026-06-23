@@ -48,8 +48,10 @@ export default function Page() {
   const [columnUniques, setColumnUniques] = useState<Record<string, string[]> | undefined>()
   const indicatorsRef = useRef<import('./api/suggest-columns/route').Indicators>({})
   const fileIdRef = useRef<string | undefined>(undefined)
-  const apiMessages = useRef<{ role: 'user' | 'assistant'; content: string }[]>([])
+  const apiMessages = useRef<{ role: 'user' | 'assistant'; content: string | unknown[] }[]>([])
   const conversationIdRef = useRef<string | undefined>(undefined)
+  const pendingQuestionRef = useRef('')
+  const clarifyToolCallRef = useRef<{ id: string; input: { question: string; choices: string[] } } | null>(null)
 
   // Sidebar
   const [mainView, setMainView] = useState<MainView>('chat')
@@ -163,7 +165,7 @@ export default function Page() {
     })
   }
 
-  async function doSend(userText: string, kbScope = '', thresholdsOverride?: Thresholds, hidden = false) {
+  async function doSend(userText: string, kbScope = '', thresholdsOverride?: Thresholds, hidden = false, clarifyToolCallId?: string) {
     if (isStreaming) return
     setMainView('chat')
 
@@ -179,7 +181,15 @@ export default function Page() {
     }
 
     if (!hidden) addMessage({ role: 'user', content: userText })
-    apiMessages.current.push({ role: 'user', content: userText })
+    if (clarifyToolCallId) {
+      // Push proper tool_result content block so the model knows it already asked
+      apiMessages.current.push({
+        role: 'user',
+        content: [{ type: 'tool_result', tool_use_id: clarifyToolCallId, content: userText }],
+      })
+    } else {
+      apiMessages.current.push({ role: 'user', content: userText })
+    }
     addMessage({ role: 'assistant', content: '' })
     setIsStreaming(true)
 
@@ -190,10 +200,15 @@ export default function Page() {
 
     let accumulated = ''
     const activeThresholds = thresholdsOverride ?? thresholds
+    // Tracks any ask_clarifying_question tool call that fires mid-stream
+    let pendingToolCall: { id: string; input: { question: string; choices: string[] } } | null = null
+    // Artifact type to auto-generate at end of stream (e.g. agenda)
+    let pendingGenerate: ArtifactType | null = null
 
     try {
       await streamChat({
-        messages: apiMessages.current,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        messages: apiMessages.current as any,
         fileId: fileIdRef.current,
         pdfFiles: pdfFiles.length ? pdfFiles : undefined,
         thresholdPrompt: activeThresholds ? thresholdPrompt(activeThresholds, indicatorsRef.current) : undefined,
@@ -201,7 +216,14 @@ export default function Page() {
         kbScope,
         onChunk(text) {
           accumulated += text
-          replaceLastAssistant(() => accumulated)
+          // Detect <!--GENERATE:agenda--> or <!--GENERATE:action_plan--> markers
+          const genMatch = accumulated.match(/<!--GENERATE:(agenda|action_plan)-->/)
+          if (genMatch && !pendingGenerate) {
+            pendingGenerate = genMatch[1] as ArtifactType
+          }
+          // Strip the marker from displayed text
+          const display = accumulated.replace(/<!--GENERATE:[^>]+-->/g, '').trim()
+          replaceLastAssistant(() => display)
         },
         onImage(data) { replaceLastAssistant(c => c, [data]) },
         onCsv(filename, data) { replaceLastAssistant(c => c, undefined, [{ filename, data }]) },
@@ -219,8 +241,52 @@ export default function Page() {
             return next
           })
         },
+        onAskChoices(toolCallId, question, choices, allowMultiple) {
+          // Store so we can push proper tool_use block after stream ends
+          pendingToolCall = { id: toolCallId, input: { question, choices } }
+          clarifyToolCallRef.current = pendingToolCall
+          const card: Message = {
+            role: 'card',
+            type: 'brainstorm_q',
+            data: {
+              questions: [{ id: 'clarify', label: question, options: choices }],
+              submitLabel: allowMultiple ? 'Continue' : 'Continue',
+            },
+            onSubmit: handleClarifySubmit,
+            id: Date.now().toString(),
+          }
+          // Replace the empty streaming placeholder with the card so only one Ev bubble shows
+          setMessages(prev => {
+            const next = [...prev]
+            for (let i = next.length - 1; i >= 0; i--) {
+              const m = next[i]
+              if (m.role === 'assistant' && !('isLoading' in m) && !(m as { content: string }).content?.trim()) {
+                next[i] = card
+                return next
+              }
+            }
+            return [...next, card]
+          })
+        },
       })
-      apiMessages.current.push({ role: 'assistant', content: accumulated })
+
+      if (pendingToolCall) {
+        // Push proper tool_use block — model will see [tool_use → tool_result] on next turn
+        const tc = pendingToolCall as { id: string; input: { question: string; choices: string[] } }
+        apiMessages.current.push({
+          role: 'assistant',
+          content: [{ type: 'tool_use', id: tc.id, name: 'ask_clarifying_question', input: tc.input }],
+        })
+      } else {
+        apiMessages.current.push({ role: 'assistant', content: accumulated })
+      }
+
+      // Auto-generate artifact in the right panel if the model emitted a <!--GENERATE:--> marker
+      if (pendingGenerate) {
+        setPanelOpen(true)
+        setPanelTab(pendingGenerate === 'agenda' ? 'agenda' : 'action_plan')
+        handleGenerate(pendingGenerate)
+      }
 
       // Persist assistant message
       if (session && conversationIdRef.current) {
@@ -382,6 +448,12 @@ export default function Page() {
     doSend(text, kbScope ?? getKbScope())
   }
 
+  function handleClarifySubmit(answers: string) {
+    const toolCallId = clarifyToolCallRef.current?.id
+    clarifyToolCallRef.current = null
+    doSend(answers, getKbScope(), undefined, true, toolCallId)
+  }
+
   function showBrainstormCard() {
     // Grade levels: read from actual data via the column whose label contains "grade"
     const gradeOptions: string[] = (() => {
@@ -429,6 +501,8 @@ export default function Page() {
       role: 'card',
       type: 'brainstorm_q',
       data: {
+        promptPrefix: 'Please brainstorm targeted, evidence-based interventions based on these priorities:',
+        submitLabel: 'Generate interventions',
         questions: [
           { id: 'subgroup', label: 'Which subgroup(s) would you like to focus on?', options: subgroupOptions },
           { id: 'indicator', label: 'Which risk indicator(s) are your priority?', options: indicatorOptions },
@@ -480,7 +554,8 @@ export default function Page() {
       const selectedNotes = noteIds
         ? notes.filter(n => noteIds.includes(n.id))
         : notes
-      const result = await generateArtifact(type, apiMessages.current, selectedNotes, reportTemplate)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const result = await generateArtifact(type, apiMessages.current as any, selectedNotes, reportTemplate)
       setArtifacts(prev => ({ ...prev, [type]: result }))
     } catch (err) {
       console.error('Artifact generation failed:', err)

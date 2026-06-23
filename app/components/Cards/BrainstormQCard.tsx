@@ -2,13 +2,13 @@
 import { useState } from 'react'
 
 type Question = { id: string; label: string; options: string[] }
-export type BrainstormQData = { questions: Question[] }
-
-const chip: React.CSSProperties = {
-  padding: '6px 14px', borderRadius: 20, border: '1px solid',
-  fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit',
-  transition: 'all 0.12s',
+export type BrainstormQData = {
+  questions: Question[]
+  submitLabel?: string
+  promptPrefix?: string
 }
+
+const isOtherChoice = (choice: string) => /other|specify|custom/i.test(choice)
 
 export default function BrainstormQCard({
   data,
@@ -19,11 +19,15 @@ export default function BrainstormQCard({
 }) {
   const [step, setStep] = useState(0)
   const [selected, setSelected] = useState<Record<string, string[]>>({})
+  const [otherText, setOtherText] = useState<Record<string, string>>({})
   const [submitted, setSubmitted] = useState(false)
+  const [confirmedAnswers, setConfirmedAnswers] = useState<{ label: string; ans: string[] }[]>([])
 
   const questions = data.questions
   const current = questions[step]
   const isLast = step === questions.length - 1
+  const currentSelected = selected[current.id] ?? []
+  const hasOtherSelected = currentSelected.some(isOtherChoice)
 
   function toggle(option: string) {
     setSelected(prev => {
@@ -33,117 +37,178 @@ export default function BrainstormQCard({
     })
   }
 
-  function advance(skip?: boolean) {
-    if (!skip && isLast) {
-      submit()
-      return
-    }
-    if (isLast) {
-      submit()
-    } else {
-      setStep(s => s + 1)
-    }
+  function resolveAns(q: Question): string[] {
+    return (selected[q.id] ?? [])
+      .map(a => isOtherChoice(a) ? (otherText[q.id] ?? '').trim() : a)
+      .filter(Boolean)
   }
 
-  function submit() {
+  function advance() {
+    if (currentSelected.length === 0) return
+    if (isLast) { doSubmit(); return }
+    setStep(s => s + 1)
+  }
+
+  function skip() {
+    if (isLast) { doSubmit(); return }
+    setStep(s => s + 1)
+  }
+
+  function doSubmit() {
     const parts = questions
-      .map(q => {
-        const ans = selected[q.id] ?? []
-        return ans.length ? `${q.label} ${ans.join(', ')}` : null
-      })
-      .filter(Boolean)
-    const prompt = parts.length
-      ? `Please brainstorm targeted, evidence-based interventions based on these priorities:\n${parts.join('\n')}`
-      : 'Please brainstorm broad evidence-based interventions for all flagged students.'
-    onSubmit(prompt)
+      .map(q => ({ label: q.label, ans: resolveAns(q) }))
+      .filter(p => p.ans.length > 0)
+
+    setConfirmedAnswers(parts)
     setSubmitted(true)
+
+    const answerLines = parts.map(p => `${p.label}: ${p.ans.join(', ')}`).join('\n')
+    const prompt = data.promptPrefix
+      ? `${data.promptPrefix}\n${answerLines || 'No specific preferences'}`
+      : (answerLines || 'Please proceed with a general response.')
+    onSubmit(prompt)
   }
 
   if (submitted) {
     return (
-      <div style={{ padding: '10px 14px', background: '#f0f3fa', borderRadius: 10, fontSize: 12, color: '#7a89b8' }}>
-        Generating interventions…
+      <div style={{
+        border: '1px solid #e5e7eb', borderRadius: 12,
+        background: '#fff', maxWidth: 480, overflow: 'hidden',
+      }}>
+        {confirmedAnswers.map(({ label, ans }) => (
+          <div key={label} style={{
+            padding: '10px 14px', display: 'flex', gap: 8, alignItems: 'baseline',
+            borderBottom: '1px solid #f3f4f6',
+          }}>
+            <span style={{ color: '#3E94A5', fontSize: 11, flexShrink: 0 }}>✓</span>
+            <span style={{ fontSize: 12, color: '#374151' }}>
+              <span style={{ fontWeight: 600, color: '#2A3B7C' }}>
+                {label.replace(/\?$/, '')}:
+              </span>{' '}
+              {ans.join(', ')}
+            </span>
+          </div>
+        ))}
+        {confirmedAnswers.length === 0 && (
+          <div style={{ padding: '10px 14px', fontSize: 12, color: '#9ca3af' }}>
+            Generating response…
+          </div>
+        )}
       </div>
     )
   }
 
-  const currentSelected = selected[current.id] ?? []
+  const canSubmit = currentSelected.length > 0 && (!hasOtherSelected || (otherText[current.id] ?? '').trim())
 
   return (
     <div style={{
-      background: '#fff', border: '1px solid #dde4f2', borderRadius: 14,
-      padding: '20px 22px', maxWidth: 520, display: 'flex', flexDirection: 'column', gap: 16,
+      border: '1px solid #e5e7eb', borderRadius: 12,
+      background: '#fff', maxWidth: 480, overflow: 'hidden',
+      boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
     }}>
-      {/* Progress dots */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-        {questions.map((_, i) => (
-          <div key={i} style={{
-            width: i === step ? 18 : 6, height: 6, borderRadius: 3,
-            background: i < step ? '#3E94A5' : i === step ? '#2A3B7C' : '#e2e8f0',
-            transition: 'all 0.2s',
-          }} />
-        ))}
-        <span style={{ fontSize: 11, color: '#7a89b8', marginLeft: 4 }}>
-          {step + 1} of {questions.length}
-        </span>
+      {/* Question header */}
+      <div style={{ padding: '14px 16px 10px' }}>
+        <p style={{ fontSize: 13, fontWeight: 600, color: '#111827', margin: 0 }}>
+          {current.label}
+        </p>
       </div>
 
-      {/* Previous answers summary */}
-      {step > 0 && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          {questions.slice(0, step).map(q => {
-            const ans = selected[q.id] ?? []
-            return ans.length ? (
-              <div key={q.id} style={{ fontSize: 11, color: '#7a89b8' }}>
-                <span style={{ fontWeight: 600 }}>{q.label.split('?')[0]}:</span>{' '}
-                {ans.join(', ')}
-              </div>
-            ) : null
-          })}
-        </div>
-      )}
-
-      {/* Current question */}
-      <div style={{ fontSize: 13, fontWeight: 600, color: '#2A3B7C' }}>{current.label}</div>
-
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>
-        {current.options.map(opt => {
-          const active = currentSelected.includes(opt)
+      {/* Choices */}
+      <div style={{ padding: '0 12px 8px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {current.options.map(choice => {
+          const sel = currentSelected.includes(choice)
+          const isOther = isOtherChoice(choice)
           return (
-            <button key={opt} onClick={() => toggle(opt)} style={{
-              ...chip,
-              background: active ? '#edf6f8' : '#f7f9fc',
-              color: active ? '#1b6070' : '#6b7280',
-              borderColor: active ? '#3E94A5' : '#e2e8f0',
-              fontWeight: active ? 600 : 500,
-            }}>
-              {active && '✓ '}{opt}
-            </button>
+            <div key={choice}>
+              <button
+                onClick={() => toggle(choice)}
+                style={{
+                  width: '100%', textAlign: 'left', display: 'flex',
+                  alignItems: 'center', gap: 10,
+                  padding: '9px 12px', borderRadius: 8,
+                  border: `1px solid ${sel ? '#3E94A5' : '#e5e7eb'}`,
+                  background: sel ? '#eef7f9' : '#f9fafb',
+                  color: sel ? '#1b6070' : '#374151',
+                  fontSize: 13, cursor: 'pointer', fontFamily: 'inherit',
+                  transition: 'all 0.1s',
+                }}
+              >
+                {/* Checkbox / radio indicator */}
+                <span style={{
+                  width: 16, height: 16, flexShrink: 0,
+                  border: `2px solid ${sel ? '#3E94A5' : '#d1d5db'}`,
+                  borderRadius: questions.length === 1 ? 4 : 4,
+                  background: sel ? '#3E94A5' : 'transparent',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  transition: 'all 0.1s',
+                }}>
+                  {sel && (
+                    <svg width="9" height="7" viewBox="0 0 9 7" fill="none">
+                      <path d="M1 3.5L3.5 6L8 1" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  )}
+                </span>
+                {choice}
+              </button>
+              {/* Inline text input for Other when selected */}
+              {isOther && sel && (
+                <div style={{ marginTop: 6, paddingLeft: 2 }}>
+                  <input
+                    autoFocus
+                    type="text"
+                    value={otherText[current.id] ?? ''}
+                    onChange={e => setOtherText(prev => ({ ...prev, [current.id]: e.target.value }))}
+                    onKeyDown={e => { if (e.key === 'Enter' && canSubmit) advance() }}
+                    placeholder="Please specify…"
+                    style={{
+                      width: '100%', boxSizing: 'border-box',
+                      border: '1px solid #3E94A5', borderRadius: 8,
+                      padding: '8px 12px', fontSize: 12,
+                      fontFamily: 'inherit', outline: 'none', color: '#2A3B7C',
+                      background: '#fff',
+                    }}
+                  />
+                </div>
+              )}
+            </div>
           )
         })}
       </div>
 
-      {/* Navigation */}
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-        <button
-          onClick={() => advance(false)}
-          style={{
-            padding: '8px 18px', background: '#2A3B7C', color: '#fff',
-            border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 600,
-            cursor: 'pointer', fontFamily: 'inherit',
-          }}
-        >
-          {isLast ? 'Generate interventions' : 'Next →'}
-        </button>
-        <button
-          onClick={() => advance(true)}
-          style={{
-            padding: '8px 12px', background: 'none', color: '#9ca3af',
-            border: 'none', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit',
-          }}
-        >
-          Skip
-        </button>
+      {/* Footer */}
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '10px 16px', borderTop: '1px solid #f3f4f6',
+        background: '#f9fafb', borderBottomLeftRadius: 12, borderBottomRightRadius: 12,
+      }}>
+        <span style={{ fontSize: 11, color: '#9ca3af' }}>
+          {currentSelected.length} selected
+        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <button
+            onClick={skip}
+            style={{
+              fontSize: 12, color: '#6b7280', background: 'none',
+              border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+              padding: '5px 10px', borderRadius: 6,
+            }}
+          >
+            Skip
+          </button>
+          <button
+            onClick={advance}
+            disabled={!canSubmit}
+            style={{
+              padding: '6px 14px', borderRadius: 20, border: 'none',
+              fontSize: 12, fontWeight: 600, cursor: canSubmit ? 'pointer' : 'not-allowed',
+              fontFamily: 'inherit', transition: 'background 0.1s',
+              background: canSubmit ? '#2A3B7C' : '#e5e7eb',
+              color: canSubmit ? '#fff' : '#9ca3af',
+            }}
+          >
+            {isLast ? (data.submitLabel ?? '→') : '→'}
+          </button>
+        </div>
       </div>
     </div>
   )

@@ -7,7 +7,8 @@ export const maxDuration = 120;
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-type SimpleMessage = { role: "user" | "assistant"; content: string };
+type ContentBlock = { type: string; [key: string]: unknown };
+type SimpleMessage = { role: "user" | "assistant"; content: string | ContentBlock[] };
 
 export async function POST(req: NextRequest) {
   const { messages, fileId, pdfFiles, thresholdPrompt, columnMapping, kbScope }: {
@@ -24,60 +25,87 @@ export async function POST(req: NextRequest) {
   const kbScopes = scopeTokens.filter(s => s === 'student_success' || s === 'school');
   const useWeb = scopeTokens.includes('web');
 
-  // Last user message text (used for KB keyword matching + web query)
-  const lastUserMsg = [...messages].reverse().find(m => m.role === 'user')?.content ?? '';
+  // KB query: use the last plain-text user message (not tool_result blocks).
+  // When a clarifying-question cycle is in progress, tool_result messages have
+  // array content — we look past them to find the original substantive question.
+  const lastUserMsg = [...messages]
+    .reverse()
+    .map(m => m.content)
+    .find((c): c is string => typeof c === 'string' && c.trim().length > 0) ?? '';
 
-  // Run KB search and web prefetch in parallel — driven purely by which chips
-  // are enabled. Relevance scoring (score > 0, no fallback) keeps unrelated
-  // questions from pulling docs, so no intent gating is needed.
-  const [kbDocs, webResult] = await Promise.all([
-    kbScopes.length ? searchKB(lastUserMsg, kbScopes, 4) : Promise.resolve([]),
-    useWeb ? prefetchWeb(lastUserMsg) : Promise.resolve({ summary: '', sources: [] }),
-  ]);
+  // Pure chat mode (no CSV, no uploaded PDFs) — KB search is handled on-demand
+  // via the search_strategies tool so the model retrieves docs with a targeted
+  // query AFTER gathering context. Upfront search still runs for PDF and CSV
+  // modes where docs are attached before the first LLM call.
+  const isChatMode = !fileId && !pdfFiles?.length;
+
+  const [kbDocs, webResult] = isChatMode
+    ? [[], { summary: '', sources: [] as { title: string; url: string }[] }]
+    : await Promise.all([
+        kbScopes.length ? searchKB(lastUserMsg, kbScopes, 4) : Promise.resolve([]),
+        useWeb ? prefetchWeb(lastUserMsg) : Promise.resolve({ summary: '', sources: [] as { title: string; url: string }[] }),
+      ]);
   const webSources = webResult.sources;
-  console.log('🔍 KB scopes:', kbScopes, 'Web enabled:', useWeb);
-  console.log('📚 KB docs:', kbDocs.length, 'Web sources:', webSources.length);
-  if (webResult.summary) console.log('🌐 Web summary preview:', webResult.summary.slice(0, 200));
+  if (!isChatMode) {
+    console.log('🔍 KB scopes:', kbScopes, 'Web enabled:', useWeb);
+    console.log('📚 KB docs:', kbDocs.length, 'Web sources:', webSources.length);
+    if (webResult.summary) console.log('🌐 Web summary preview:', webResult.summary.slice(0, 200));
+  }
 
-  let apiMessages: Anthropic.MessageParam[] = messages.map((m) => ({
+  // Drop empty plain-text assistant messages (empty strings left by interrupted streams).
+  // Do NOT merge consecutive user messages anymore — tool_result blocks must stay
+  // paired with their preceding tool_use block.
+  const normalizedMessages: SimpleMessage[] = messages.filter(msg => {
+    if (msg.role === 'assistant' && typeof msg.content === 'string' && !msg.content.trim()) return false;
+    return true;
+  });
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let apiMessages: Anthropic.MessageParam[] = normalizedMessages.map((m) => ({
     role: m.role,
-    content: m.content,
+    content: m.content as any,
   }));
 
-  const lastUserIdx = apiMessages.map((m) => m.role).lastIndexOf("user");
-
-  if (fileId || kbDocs.length || pdfFiles?.length) {
-    if (lastUserIdx >= 0) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const contentBlocks: any[] = [];
-
-      // Attach teacher-uploaded PDFs first
-      for (const pdf of (pdfFiles ?? [])) {
-        contentBlocks.push({
-          type: 'document',
-          source: { type: 'file', file_id: pdf.fileId },
-          title: pdf.name.replace(/\.(pdf|txt|docx)$/i, ''),
-        });
-      }
-
-      // Attach KB documents (document blocks with citations)
-      for (const doc of kbDocs) {
-        contentBlocks.push({
-          type: 'document',
-          source: { type: 'file', file_id: doc.anthropic_file_id },
-          title: doc.filename.replace(/_/g, ' ').replace(/\.(pdf|txt|docx)$/i, ''),
-        });
-      }
-
-      // Attach uploaded CSV for code execution
-      if (fileId) {
-        contentBlocks.push({ type: "container_upload", file_id: fileId });
-      }
-
-      contentBlocks.push({ type: "text", text: messages[lastUserIdx].content });
-
-      apiMessages[lastUserIdx] = { role: "user", content: contentBlocks };
+  // Find the last user message with plain string content.
+  // tool_result messages have array content and cannot receive document attachments.
+  let attachIdx = -1;
+  for (let i = apiMessages.length - 1; i >= 0; i--) {
+    if (apiMessages[i].role === 'user' && typeof apiMessages[i].content === 'string') {
+      attachIdx = i;
+      break;
     }
+  }
+
+  if ((fileId || kbDocs.length || pdfFiles?.length) && attachIdx >= 0) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const contentBlocks: any[] = [];
+
+    // Attach teacher-uploaded PDFs first
+    for (const pdf of (pdfFiles ?? [])) {
+      contentBlocks.push({
+        type: 'document',
+        source: { type: 'file', file_id: pdf.fileId },
+        title: pdf.name.replace(/\.(pdf|txt|docx)$/i, ''),
+      });
+    }
+
+    // Attach KB documents (document blocks with citations)
+    for (const doc of kbDocs) {
+      contentBlocks.push({
+        type: 'document',
+        source: { type: 'file', file_id: doc.anthropic_file_id },
+        title: doc.filename.replace(/_/g, ' ').replace(/\.(pdf|txt|docx)$/i, ''),
+      });
+    }
+
+    // Attach uploaded CSV for code execution
+    if (fileId) {
+      contentBlocks.push({ type: "container_upload", file_id: fileId });
+    }
+
+    contentBlocks.push({ type: "text", text: apiMessages[attachIdx].content });
+
+    apiMessages[attachIdx] = { role: "user", content: contentBlocks };
   }
 
   const thresholdLine = thresholdPrompt
@@ -149,7 +177,7 @@ print("TABLE_CSV:descriptive_filename.csv")
 print(roster.to_csv(index=False))
 PYEOF
 
-Write one sentence announcing the export before running the code. After the code block completes, write at most one short sentence — do not re-summarize. Include ALL matching rows — never truncate or sample. Do NOT output base64, do NOT use <!--EXPORT:-->, do NOT embed data in any card or comment marker.
+Write one sentence announcing the export before running the code. After the code block completes, write your interpretation using the key-takeaway format (signal emoji + bold headline + 1–2 sentences) — do NOT reproduce the roster as a markdown table or list the rows again in any form. The TABLE_CSV is automatically rendered as a paginated interactive card; duplicating it in text is redundant and confusing. Include ALL matching rows — never truncate or sample. Do NOT output base64, do NOT use <!--EXPORT:-->, do NOT embed data in any card or comment marker.
 
 ## Visualization rule
 Do NOT use matplotlib. The frontend renders interactive charts from JSON — output a <!--CARD:--> marker with type "chart" instead.
@@ -211,7 +239,43 @@ When asked to brainstorm interventions (message starting with "Please brainstorm
 - Do NOT run code execution — use data already in the conversation context
 - Format: **Bold title** followed by 2–3 sentences. No tables, no tier headers, no priority sequences
 - Cite sources inline [1][2] etc.`
-    : `You are Edvise, a helpful assistant for teachers. Answer questions conversationally and naturally. Do not volunteer research or interventions unless the teacher explicitly asks for them.`;
+    : `You are Edvise, a helpful assistant for teachers. Answer questions conversationally and naturally. Do not volunteer research or interventions unless the teacher explicitly asks for them.
+
+## CRITICAL — never promise work you are not doing in this turn
+MUST NOT write text like "I'll start by…", "Let me begin…", "Please hold on while I…", or any promise of future work. Either DO THE WORK (call the tool) in this same turn, or do not announce it.
+
+## Intervention & Strategy workflow
+
+You are an educational intervention specialist. This workflow applies WHENEVER the teacher asks about interventions, strategies, engagement, meeting agendas, action plans, MTSS/RTI/PBIS, attendance plans, behavior plans, or any related topic.
+
+### Step 1 — Gather context via 2–3 MCQs (REQUIRED)
+Before calling search_strategies, ask the teacher 2 to 3 ask_clarifying_question questions (ONE per turn, across turns) to personalize the intervention. Pick the most relevant dimensions from:
+- The student / focus group (grade level, demographic, specific cohort)
+- The primary concern (attendance, behavior, academics, social-emotional)
+- Tier of support (Tier 1 / 2 / 3)
+- Scope (single student, classroom, grade-level, school-wide)
+- Timeframe / urgency (this week, this quarter, this year)
+- Constraints (resources available, staff roles)
+
+Rules:
+- Ask ONE question per call, ONE call per turn. Wait for the answer, then ask the next.
+- Ask a MINIMUM of 2 MCQs and a MAXIMUM of 3 before calling search_strategies — UNLESS the teacher already provided all context upfront or explicitly says "just search" / "skip the questions".
+- Never skip MCQs on a vague first intervention request — the interactive MCQ is core to the personalized experience.
+- Do NOT ask the same dimension twice.
+
+### Step 2 — Call search_strategies (REQUIRED on EVERY intervention turn)
+After the MCQs are answered, call search_strategies with a specific, well-scoped query incorporating all gathered context. This is required not only on the first substantive turn but on EVERY SUBSEQUENT TURN while the conversation is about interventions — including follow-ups like "what about grade 5?", "tell me more", "what if they're ELL?", "any other ideas?". Re-call with the refined query every time.
+
+### Step 3 — Write a detailed cited response
+After search_strategies returns the documents, write a comprehensive, practical response using them. Cite each source inline with [N] markers. Be specific, actionable, and thorough — name concrete strategies with enough detail for a teacher to implement tomorrow. Do NOT start with "I searched..." or "I found..." — just go straight into the content.
+
+### Meeting agenda requests
+Follow the SAME workflow (2–3 MCQs → search_strategies). Ask about: meeting type, attendees, focus concern, desired outcome. After search_strategies returns, write a single short sentence (e.g. "Your meeting agenda is ready in the panel.") and then emit this marker on its own line:
+<!--GENERATE:agenda-->
+Do NOT write the agenda content in chat — the structured agenda is generated in the right panel. Nothing else after the marker.
+
+## For everything else
+For greetings, simple factual questions, or quick clarifications that do not need evidence-based strategies, respond conversationally without calling any tool.`;
 
   // Build source context block appended to system prompt.
   // PDFs and KB/web have separate citation rules so Claude doesn't bleed PDF references
@@ -269,6 +333,35 @@ Each section must stand alone — do not cross-reference between sections. Only 
 
   const needsFilesApi = !!(fileId || kbDocs.length || pdfFiles?.length);
 
+  const askChoicesTool = {
+    name: "ask_clarifying_question",
+    description: "Ask the teacher one multiple-choice clarifying question when you need missing context to give a useful, targeted answer. Use sparingly — only when the answer would change materially. Ask ONE question per call, 3–4 specific choices.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        question: { type: "string", description: "The clarifying question to ask" },
+        choices: { type: "array", items: { type: "string" }, description: "3–4 specific, relevant choices. Include 'Other' as the last option when open-ended answers are possible." },
+        allow_multiple: { type: "boolean", description: "Whether the teacher can select multiple choices. Default false." },
+      },
+      required: ["question", "choices"],
+    },
+  };
+
+  const searchStrategiesTool = {
+    name: "search_strategies",
+    description: "Search the knowledge base and web for evidence-based intervention strategies, best practices, and relevant research. Call this after gathering sufficient context. The tool retrieves and attaches relevant documents so you can write a detailed cited response.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        query: {
+          type: "string",
+          description: "A specific, well-scoped search query that incorporates all context gathered (grade level, subject, student group, challenge type, etc.)",
+        },
+      },
+      required: ["query"],
+    },
+  };
+
   const stream = client.messages.stream(
     {
       model: "claude-sonnet-4-6",
@@ -276,7 +369,9 @@ Each section must stand alone — do not cross-reference between sections. Only 
       system: system + sourceBlock,
       messages: apiMessages,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      tools: fileId ? [{ type: "code_execution_20260120", name: "code_execution" } as any] : [],
+      tools: fileId
+        ? [{ type: "code_execution_20260120", name: "code_execution" } as any]
+        : [askChoicesTool, searchStrategiesTool],
     },
     needsFilesApi ? { headers: { "anthropic-beta": "files-api-2025-04-14" } } : {}
   );
@@ -291,65 +386,203 @@ Each section must stand alone — do not cross-reference between sections. Only 
         send({ type: "sources", sources: sourceMeta });
       }
 
-      let codeBuffer = "";
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      async function processStream(streamIterable: AsyncIterable<any>, priorText = ''): Promise<void> {
+        let toolBuffer = "";
+        let currentToolName = "";
+        let currentToolUseId = "";
+        let localAccumulated = priorText;
 
-      try {
-        for await (const event of stream) {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const e = event as any;
+        try {
+          for await (const event of streamIterable) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const e = event as any;
 
-          // Log: start of a new code block
-          if (e.type === "content_block_start" && e.content_block?.type === "tool_use") {
-            codeBuffer = "";
-          }
-
-          // Log: accumulate code chunks
-          if (e.type === "content_block_delta" && e.delta?.type === "input_json_delta") {
-            codeBuffer += e.delta.partial_json ?? "";
-          }
-
-          // Log: code block complete — print the full code
-          if (e.type === "content_block_stop" && codeBuffer) {
-            try {
-              const parsed = JSON.parse(codeBuffer);
-              if (parsed.code) console.log("\n─── CODE ───────────────────────────\n" + parsed.code + "\n────────────────────────────────────");
-            } catch {}
-            codeBuffer = "";
-          }
-
-          // Capture execution results — log stdout/stderr, extract images
-          if (e.type === "content_block_start" && e.content_block?.type === "bash_code_execution_tool_result") {
-            const block = e.content_block;
-            const stdout: string = block.content?.stdout ?? "";
-            const stderr: string = block.content?.stderr ?? "";
-            const rc: number = block.content?.return_code ?? 0;
-            const printable = stdout
-              .replace(/IMAGE_BASE64:[A-Za-z0-9+/=\n]+/g, "[image omitted]")
-              .replace(/CSV_EXPORT:[^\n]+\n[A-Za-z0-9+/=\n]+/g, "[csv omitted]")
-              .replace(/TABLE_CSV:[^\n]+\n[\s\S]*/g, "[table csv omitted]");
-            if (printable.trim()) console.log("\n─── STDOUT ──────────────────────────\n" + printable.trimEnd() + "\n────────────────────────────────────");
-            if (stderr.trim()) console.log("\n─── STDERR ──────────────────────────\n" + stderr.trimEnd() + "\n────────────────────────────────────");
-            if (rc !== 0) console.log("return_code:", rc);
-            const imgMatch = stdout.match(/IMAGE_BASE64:([A-Za-z0-9+/=\n]+)/);
-            if (imgMatch) {
-              send({ type: "image", mediaType: "image/png", data: imgMatch[1].replace(/\n/g, "") });
+            // Stream text deltas
+            if (e.type === "content_block_delta" && e.delta?.type === "text_delta") {
+              const chunk = (e.delta.text as string) ?? "";
+              localAccumulated += chunk;
+              send({ type: "text", data: chunk });
             }
-            const tableCsvMatch = stdout.match(/TABLE_CSV:([^\n]+)\n([\s\S]+)/);
-            if (tableCsvMatch) {
-              send({ type: "table_csv", filename: tableCsvMatch[1].trim(), csv: tableCsvMatch[2] });
+
+            // Track which tool is being called
+            if (e.type === "content_block_start" && e.content_block?.type === "tool_use") {
+              toolBuffer = "";
+              currentToolName = (e.content_block.name as string) ?? "";
+              currentToolUseId = (e.content_block.id as string) ?? "";
+            }
+
+            // Accumulate tool input JSON
+            if (e.type === "content_block_delta" && e.delta?.type === "input_json_delta") {
+              toolBuffer += e.delta.partial_json ?? "";
+            }
+
+            // Tool call complete
+            if (e.type === "content_block_stop" && toolBuffer) {
+              if (currentToolName === "ask_clarifying_question") {
+                try {
+                  const parsed = JSON.parse(toolBuffer);
+                  send({
+                    type: "ask_choices",
+                    toolCallId: currentToolUseId,
+                    toolInput: { question: parsed.question ?? "", choices: parsed.choices ?? [] },
+                    question: parsed.question ?? "",
+                    choices: parsed.choices ?? [],
+                    allowMultiple: parsed.allow_multiple ?? false,
+                  });
+                } catch {}
+                toolBuffer = "";
+                currentToolName = "";
+                break; // stream paused — frontend shows MCQ card, resumes on submit
+
+              } else if (currentToolName === "search_strategies") {
+                try {
+                  const { query } = JSON.parse(toolBuffer) as { query: string };
+                  console.log('🔎 search_strategies query:', query);
+
+                  // Targeted KB + web search using the model's specific query
+                  const [searchKbDocs, searchWebResult] = await Promise.all([
+                    kbScopes.length ? searchKB(query, kbScopes, 6) : Promise.resolve([]),
+                    useWeb ? prefetchWeb(query) : Promise.resolve({ summary: '', sources: [] as { title: string; url: string }[] }),
+                  ]);
+                  console.log('📚 search_strategies: KB docs:', searchKbDocs.length, '| Web sources:', searchWebResult.sources.length);
+
+                  // Emit sources event so UI shows chips
+                  const searchSourceMeta = [
+                    ...searchKbDocs.map(d => ({
+                      title: d.filename.replace(/_/g, ' ').replace(/\.(pdf|txt|docx)$/i, ''),
+                      kind: 'kb' as const,
+                    })),
+                    ...searchWebResult.sources.map(s => ({ title: s.title, url: s.url, kind: 'web' as const })),
+                  ];
+                  if (searchSourceMeta.length) send({ type: "sources", sources: searchSourceMeta });
+
+                  // Assistant content: any text emitted before the tool call + the tool_use block itself
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  const assistantContent: any[] = [];
+                  const trimmedText = localAccumulated.trim();
+                  if (trimmedText) assistantContent.push({ type: 'text', text: trimmedText });
+                  assistantContent.push({ type: 'tool_use', id: currentToolUseId, name: 'search_strategies', input: { query } });
+
+                  // User message: tool_result block (required by API) followed by KB document blocks.
+                  // Document blocks placed in the same user message alongside the tool_result are
+                  // valid per the Anthropic API and allow the model to read and cite them directly.
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  const toolResultUserContent: any[] = [
+                    {
+                      type: 'tool_result',
+                      tool_use_id: currentToolUseId,
+                      content: searchKbDocs.length
+                        ? `Found ${searchKbDocs.length} knowledge base document${searchKbDocs.length > 1 ? 's' : ''}${searchWebResult.summary ? ' and live web results' : ''}. Documents are attached below — write a comprehensive, cited response using them.`
+                        : 'No knowledge base documents matched this query. Use your best evidence-based knowledge.',
+                    },
+                    ...searchKbDocs.map(d => ({
+                      type: 'document',
+                      source: { type: 'file', file_id: d.anthropic_file_id },
+                      title: d.filename.replace(/_/g, ' ').replace(/\.(pdf|txt|docx)$/i, ''),
+                    })),
+                    ...(searchWebResult.summary
+                      ? [{ type: 'text', text: `\n\nWeb search results:\n${searchWebResult.summary}` }]
+                      : []),
+                  ];
+
+                  const continuationMessages: Anthropic.MessageParam[] = [
+                    ...apiMessages,
+                    { role: 'assistant' as const, content: assistantContent },
+                    { role: 'user' as const, content: toolResultUserContent },
+                  ];
+
+                  const kbCount = searchKbDocs.length;
+                  const webCount = searchWebResult.sources.length;
+                  const kbRange = kbCount > 0 ? `[1]${kbCount > 1 ? `–[${kbCount}]` : ''}` : '';
+                  const webRange = webCount > 0 ? `[${kbCount + 1}]${webCount > 1 ? `–[${kbCount + webCount}]` : ''}` : '';
+                  const sourceList = [
+                    ...searchKbDocs.map((d, i) => `[${i + 1}] ${d.filename.replace(/_/g, ' ').replace(/\.(pdf|txt|docx)$/i, '')}`),
+                    ...searchWebResult.sources.map((s, i) => `[${kbCount + i + 1}] ${s.title} (${s.url})`),
+                  ].join('\n');
+
+                  let contSourceBlock = sourceList ? `\n\n**Available sources:**\n${sourceList}` : '';
+
+                  if (kbCount > 0 && webCount > 0) {
+                    contSourceBlock += `\n\nBoth knowledge base documents and live web sources are available. Structure your response as two separate, standalone sections using these exact markers:
+
+<!--KB_START-->
+[A complete, high-quality answer drawing ONLY from the knowledge base documents ${kbRange}. Cite inline with [N] markers. Be thorough and practical.]
+<!--KB_END-->
+
+<!--WEB_START-->
+[A complete, high-quality answer drawing ONLY from the web sources ${webRange}. Cite inline with [N] markers. Be thorough and practical.]
+<!--WEB_END-->
+
+Each section must stand alone — do not cross-reference between sections. Only draw on sources when the question is substantive.`;
+                  } else if (kbCount > 0) {
+                    contSourceBlock += `\n\n**Knowledge base documents** (${kbRange}): Write a comprehensive, cited response drawing on these sources. Cite inline with [N] markers. Be thorough and practical.`;
+                  } else if (webCount > 0) {
+                    contSourceBlock += `\n\n**Web sources** (${webRange}): Write a comprehensive, cited response drawing on these sources. Cite inline with [N] markers.`;
+                  }
+
+                  const continuationStream = client.messages.stream(
+                    {
+                      model: "claude-sonnet-4-6",
+                      max_tokens: 16000,
+                      system: system + contSourceBlock,
+                      messages: continuationMessages,
+                      tools: [askChoicesTool],
+                    },
+                    searchKbDocs.length ? { headers: { "anthropic-beta": "files-api-2025-04-14" } } : {}
+                  );
+
+                  await processStream(continuationStream, localAccumulated);
+                } catch (err) {
+                  console.error('[search_strategies]', err);
+                }
+                toolBuffer = "";
+                currentToolName = "";
+                break;
+
+              } else {
+                // Code execution tool
+                try {
+                  const parsed = JSON.parse(toolBuffer);
+                  if (parsed.code) console.log("\n─── CODE ───────────────────────────\n" + parsed.code + "\n────────────────────────────────────");
+                } catch {}
+                toolBuffer = "";
+                currentToolName = "";
+              }
+            }
+
+            // Capture execution results — log stdout/stderr, extract images/tables
+            if (e.type === "content_block_start" && e.content_block?.type === "bash_code_execution_tool_result") {
+              const block = e.content_block;
+              const stdout: string = block.content?.stdout ?? "";
+              const stderr: string = block.content?.stderr ?? "";
+              const rc: number = block.content?.return_code ?? 0;
+              const printable = stdout
+                .replace(/IMAGE_BASE64:[A-Za-z0-9+/=\n]+/g, "[image omitted]")
+                .replace(/CSV_EXPORT:[^\n]+\n[A-Za-z0-9+/=\n]+/g, "[csv omitted]")
+                .replace(/TABLE_CSV:[^\n]+\n[\s\S]*/g, "[table csv omitted]");
+              if (printable.trim()) console.log("\n─── STDOUT ──────────────────────────\n" + printable.trimEnd() + "\n────────────────────────────────────");
+              if (stderr.trim()) console.log("\n─── STDERR ──────────────────────────\n" + stderr.trimEnd() + "\n────────────────────────────────────");
+              if (rc !== 0) console.log("return_code:", rc);
+              const imgMatch = stdout.match(/IMAGE_BASE64:([A-Za-z0-9+/=\n]+)/);
+              if (imgMatch) {
+                send({ type: "image", mediaType: "image/png", data: imgMatch[1].replace(/\n/g, "") });
+              }
+              const tableCsvMatch = stdout.match(/TABLE_CSV:([^\n]+)\n([\s\S]+)/);
+              if (tableCsvMatch) {
+                send({ type: "table_csv", filename: tableCsvMatch[1].trim(), csv: tableCsvMatch[2] });
+              }
             }
           }
-
-          // Stream text deltas
-          if (e.type === "content_block_delta" && e.delta?.type === "text_delta") {
-            send({ type: "text", data: e.delta.text });
-          }
+        } catch (err) {
+          console.error("Stream error:", err);
+          const msg = err instanceof Error ? err.message : String(err);
+          send({ type: "error", error: `Stream error: Error: ${msg}` });
         }
-      } catch (err) {
-        console.error("Stream error:", err);
-      } finally {
-        controller.close();
       }
+
+      await processStream(stream);
+      controller.close();
     },
   });
 

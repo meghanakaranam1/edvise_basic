@@ -33,8 +33,9 @@ export async function streamChat({
   onCsv,
   onTableCsv,
   onSources,
+  onAskChoices,
 }: {
-  messages: { role: 'user' | 'assistant'; content: string }[]
+  messages: { role: 'user' | 'assistant'; content: string | unknown[] }[]
   fileId?: string
   pdfFiles?: { name: string; fileId: string }[]
   thresholdPrompt?: string
@@ -45,6 +46,7 @@ export async function streamChat({
   onCsv: (filename: string, data: string) => void
   onTableCsv: (filename: string, csv: string) => void
   onSources?: (sources: Array<{ title: string; kind: 'kb' | 'web'; url?: string }>) => void
+  onAskChoices?: (toolCallId: string, question: string, choices: string[], allowMultiple: boolean) => void
 }): Promise<void> {
   const res = await fetch('/api/chat', {
     method: 'POST',
@@ -72,6 +74,7 @@ export async function streamChat({
         if (e.type === 'csv') onCsv(e.filename as string, e.data as string)
         if (e.type === 'table_csv') onTableCsv(e.filename as string, e.csv as string)
         if (e.type === 'sources' && onSources) onSources(e.sources as Array<{ title: string; kind: 'kb' | 'web'; url?: string }>)
+        if (e.type === 'ask_choices' && onAskChoices) onAskChoices(e.toolCallId as string, e.question as string, e.choices as string[], (e.allowMultiple as boolean) ?? false)
       } catch { /* skip malformed lines */ }
     }
     if (done) break

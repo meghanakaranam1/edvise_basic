@@ -155,6 +155,7 @@ function parseSourceSections(text: string): { kb: string | null; web: string | n
   return { kb, web, rest }
 }
 
+// Legacy SourceTabs — only used when model writes <!--KB_START--> / <!--WEB_START--> markers
 function SourceTabs({ kb, web, kbSources, webSources }: {
   kb: string; web: string
   kbSources: Array<{ title: string; kind: 'kb' | 'web' | 'pdf'; url?: string }>
@@ -204,6 +205,103 @@ function SourceTabs({ kb, web, kbSources, webSources }: {
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+// Sources section with tabs when both KB and web are present.
+// Numbers are global (KB [1]–[N], then web [N+1]–[M]) so inline [N] citations in text align.
+function SourcesSection({ sources }: {
+  sources: Array<{ title: string; kind: 'kb' | 'web' | 'pdf'; url?: string }>
+}) {
+  const [activeTab, setActiveTab] = useState<'kb' | 'web'>('kb')
+
+  const indexed = sources
+    .map((s, i) => ({ s, num: i + 1 }))
+    .filter(({ s }) => s.kind !== 'pdf')
+
+  const kbItems = indexed.filter(({ s }) => s.kind === 'kb')
+  const webItems = indexed.filter(({ s }) => s.kind === 'web')
+  const hasBoth = kbItems.length > 0 && webItems.length > 0
+
+  if (!indexed.length) return null
+
+  function Chip({ s, num }: { s: { title: string; kind: 'kb' | 'web' | 'pdf'; url?: string }; num: number }) {
+    const isWeb = s.kind === 'web' && s.url
+    const base: React.CSSProperties = {
+      display: 'inline-flex', alignItems: 'center', gap: 4,
+      fontSize: 11, padding: '3px 9px', borderRadius: 12, fontWeight: 500,
+    }
+    const citeBadge = (
+      <span style={{
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        width: 16, height: 16, borderRadius: '50%', fontSize: 9, fontWeight: 700,
+        background: isWeb ? '#f6d860' : '#c5cce0',
+        color: isWeb ? '#92400e' : '#1B3A6B',
+        flexShrink: 0,
+      }}>{num}</span>
+    )
+    if (isWeb) {
+      return (
+        <a href={s.url} target="_blank" rel="noopener noreferrer"
+          style={{ ...base, background: '#fef9ec', border: '1px solid #f6d860', color: '#92400e', textDecoration: 'none' }}>
+          {citeBadge}
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="10" height="10"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+          {s.title}
+        </a>
+      )
+    }
+    return (
+      <span style={{ ...base, background: '#eef0f8', border: '1px solid #c5cce0', color: '#1B3A6B' }}>
+        {citeBadge}
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="10" height="10"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        {s.title}
+      </span>
+    )
+  }
+
+  if (hasBoth) {
+    const activeItems = activeTab === 'kb' ? kbItems : webItems
+    const tabBtn = (t: 'kb' | 'web', label: string, count: number) => (
+      <button
+        onClick={() => setActiveTab(t)}
+        style={{
+          display: 'inline-flex', alignItems: 'center', gap: 5,
+          padding: '5px 12px', fontSize: 11, fontWeight: 600, cursor: 'pointer',
+          border: '1px solid', borderRadius: 20, fontFamily: 'inherit',
+          borderColor: activeTab === t ? (t === 'kb' ? '#c5cce0' : '#f6d860') : '#e5e7eb',
+          background: activeTab === t ? (t === 'kb' ? '#eef0f8' : '#fef9ec') : '#f9fafb',
+          color: activeTab === t ? (t === 'kb' ? '#1B3A6B' : '#92400e') : '#9ca3af',
+          transition: 'all 0.1s',
+        }}
+      >
+        {t === 'kb' ? '📚' : '🌐'} {label}
+        <span style={{
+          fontSize: 10, fontWeight: 700,
+          background: activeTab === t ? (t === 'kb' ? '#c5cce0' : '#f6d860') : '#e5e7eb',
+          color: activeTab === t ? (t === 'kb' ? '#1B3A6B' : '#92400e') : '#9ca3af',
+          borderRadius: 10, padding: '1px 6px',
+        }}>{count}</span>
+      </button>
+    )
+    return (
+      <div style={{ marginTop: 12 }}>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 8 }}>
+          <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Sources</span>
+          {tabBtn('kb', 'Knowledge Base', kbItems.length)}
+          {tabBtn('web', 'Web', webItems.length)}
+        </div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+          {activeItems.map(({ s, num }) => <Chip key={num} s={s} num={num} />)}
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: 10, alignItems: 'center' }}>
+      <span style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Sources</span>
+      {indexed.map(({ s, num }) => <Chip key={num} s={s} num={num} />)}
     </div>
   )
 }
@@ -377,7 +475,7 @@ export default function MessageList({
 
           const { text: withoutSuggest, questions } = parseSuggestions(msg.content)
           const thisCardType = getCardTypeFromContent(msg.content)
-          const stageActions = !(i === messages.length - 1 && isStreaming) ? getStageActions(messages, thisCardType) : []
+          const stageActions = !(i === messages.length - 1 && isStreaming) ? getStageActions(messages.slice(0, i + 1), thisCardType) : []
           const { kb: kbSection, web: webSection, rest: restContent } = parseSourceSections(withoutSuggest)
           const hasTabs = !!(kbSection && webSection)
           const parts = parseCardParts(restContent)
@@ -459,39 +557,9 @@ export default function MessageList({
                       Save to notes
                     </button>
                   )}
-                  {!hasTabs && msg.sources && msg.sources.length > 0 && !isStreaming && msg.content.trim().length > 0 && !msg.content.includes('"brainstorm_q"') && (() => {
-                    // Only show sources whose citation number [N] actually appears in the response
-                    const citedSources = msg.sources
-                      .map((s, j) => ({ s, originalIdx: j + 1 }))
-                      .filter(({ originalIdx }) => new RegExp(`\\[${originalIdx}\\]`).test(withoutSuggest))
-                    if (!citedSources.length) return null
-                    return (
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: 10 }}>
-                        <span style={{ fontSize: 10, color: 'var(--text-muted)', alignSelf: 'center', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Sources</span>
-                        {citedSources.map(({ s, originalIdx }) => (
-                          s.kind === 'web' && s.url ? (
-                            <a key={originalIdx} href={s.url} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, padding: '2px 8px', borderRadius: 12, background: '#fef9ec', border: '1px solid #f6d860', color: '#92400e', textDecoration: 'none', fontWeight: 500 }}>
-                              <sup style={{ fontSize: 9, fontWeight: 700, marginRight: 1 }}>{originalIdx}</sup>
-                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="10" height="10"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
-                              {s.title}
-                            </a>
-                          ) : s.kind === 'pdf' ? (
-                            <span key={originalIdx} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, padding: '2px 8px', borderRadius: 12, background: '#faf5ff', border: '1px solid #d8b4fe', color: '#5b21b6', fontWeight: 500 }}>
-                              <sup style={{ fontSize: 9, fontWeight: 700, marginRight: 1 }}>{originalIdx}</sup>
-                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="10" height="10"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-                              {s.title}
-                            </span>
-                          ) : (
-                            <span key={originalIdx} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, padding: '2px 8px', borderRadius: 12, background: '#eef0f8', border: '1px solid #c5cce0', color: '#1B3A6B', fontWeight: 500 }}>
-                              <sup style={{ fontSize: 9, fontWeight: 700, marginRight: 1 }}>{originalIdx}</sup>
-                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="10" height="10"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                              {s.title}
-                            </span>
-                          )
-                        ))}
-                      </div>
-                    )
-                  })()}
+                  {!hasTabs && msg.sources && msg.sources.length > 0 && !(isLast && isStreaming) && (
+                    <SourcesSection sources={msg.sources} />
+                  )}
                   {(stageActions.length > 0 || questions.length > 0) && (
                     <div className="suggestions">
                       {/* Stage action buttons — deterministic from conversation history */}
