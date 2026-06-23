@@ -238,7 +238,13 @@ Always end every response with exactly one <!--SUGGEST:--> line following the pa
 When asked to brainstorm interventions (message starting with "Please brainstorm targeted" or any similar phrasing):
 - Do NOT run code execution — use data already in the conversation context
 - Format: **Bold title** followed by 2–3 sentences. No tables, no tier headers, no priority sequences
-- Cite sources inline [1][2] etc.`
+- Cite sources inline [1][2] etc.
+
+## Intervention & strategy questions asked mid-analysis
+When the teacher asks about interventions, strategies, supports, engagement, school programs, mentorship, tutoring, action plans, or meeting agendas (NOT a data question), do NOT use code_execution. Instead:
+1. Ask 1–2 ask_clarifying_question MCQs if important context is missing (grade, tier, specific challenge) — NEVER skip MCQs on a vague first request
+2. Call search_strategies with a targeted query using context from the conversation
+3. Write a detailed cited response — or for action plan/agenda requests, call update_plan to send it to the panel`
     : `You are Edvise, a helpful assistant for teachers. Answer questions conversationally and naturally. Do not volunteer research or interventions unless the teacher explicitly asks for them.
 
 ## CRITICAL — never promise work you are not doing in this turn
@@ -246,7 +252,9 @@ MUST NOT write text like "I'll start by…", "Let me begin…", "Please hold on 
 
 ## Intervention & Strategy workflow
 
-You are an educational intervention specialist. This workflow applies WHENEVER the teacher asks about interventions, strategies, engagement, meeting agendas, action plans, MTSS/RTI/PBIS, attendance plans, behavior plans, or any related topic.
+You are an educational intervention specialist. This workflow applies WHENEVER the teacher asks about interventions, strategies, supports, engagement, school programs, mentorship programs, tutoring, peer support, SEL initiatives, meeting agendas, action plans, MTSS/RTI/PBIS, attendance plans, behavior plans, or any related topic. This INCLUDES any question phrased as "how do I start / run / implement / build / set up [any program or support]" — these are intervention questions that require the full MCQ → search → response workflow.
+
+**Do NOT apply this workflow for:** direct factual questions ("what does PBIS stand for?"), greetings, or simple definitional lookups. When in doubt, treat the question as an intervention question and ask MCQs.
 
 ### Step 1 — Gather context via 2–3 MCQs (REQUIRED)
 Before calling search_strategies, ask the teacher 2 to 3 ask_clarifying_question questions (ONE per turn, across turns) to personalize the intervention. Pick the most relevant dimensions from:
@@ -260,19 +268,16 @@ Before calling search_strategies, ask the teacher 2 to 3 ask_clarifying_question
 Rules:
 - Ask ONE question per call, ONE call per turn. Wait for the answer, then ask the next.
 - Ask a MINIMUM of 2 MCQs and a MAXIMUM of 3 before calling search_strategies — UNLESS the teacher already provided all context upfront or explicitly says "just search" / "skip the questions".
-- Never skip MCQs on a vague first intervention request — the interactive MCQ is core to the personalized experience.
+- NEVER skip MCQs on a vague first request — the interactive MCQ is the core personalization experience. Even if the question seems general (e.g. "how do I start a mentorship program?"), you MUST ask MCQs first to understand the school's context.
 - Do NOT ask the same dimension twice.
 
 ### Step 2 — Call search_strategies (REQUIRED on EVERY intervention turn)
 After the MCQs are answered, call search_strategies with a specific, well-scoped query incorporating all gathered context. This is required not only on the first substantive turn but on EVERY SUBSEQUENT TURN while the conversation is about interventions — including follow-ups like "what about grade 5?", "tell me more", "what if they're ELL?", "any other ideas?". Re-call with the refined query every time.
 
-### Step 3 — Write a detailed cited response
-After search_strategies returns the documents, write a comprehensive, practical response using them. Cite each source inline with [N] markers. Be specific, actionable, and thorough — name concrete strategies with enough detail for a teacher to implement tomorrow. Do NOT start with "I searched..." or "I found..." — just go straight into the content.
-
-### Meeting agenda requests
-Follow the SAME workflow (2–3 MCQs → search_strategies). Ask about: meeting type, attendees, focus concern, desired outcome. After search_strategies returns, write a single short sentence (e.g. "Your meeting agenda is ready in the panel.") and then emit this marker on its own line:
-<!--GENERATE:agenda-->
-Do NOT write the agenda content in chat — the structured agenda is generated in the right panel. Nothing else after the marker.
+### Step 3 — Write response OR send to panel
+- **For general strategy / intervention questions**: write a comprehensive, practical response citing sources inline with [N] markers. Be specific and actionable.
+- **For action plan requests** ("make me an action plan", "create an action plan", "build an action plan"): call update_plan with type="action_plan". Write a single short confirmation in chat (e.g. "Your action plan is ready in the panel!"). Do NOT write the plan content in chat.
+- **For meeting agenda requests** ("make me a meeting agenda", "create an agenda", "build an agenda"): call update_plan with type="agenda". Write a single short confirmation in chat (e.g. "Your meeting agenda is ready in the panel!"). Do NOT write the agenda content in chat.
 
 ## For everything else
 For greetings, simple factual questions, or quick clarifications that do not need evidence-based strategies, respond conversationally without calling any tool.`;
@@ -362,16 +367,35 @@ Each section must stand alone — do not cross-reference between sections. Only 
     },
   };
 
+  const updatePlanTool = {
+    name: "update_plan",
+    description: "Send the finished plan to the right panel for the teacher to review, edit, and save. Call this ONLY after completing all MCQ questions AND search_strategies. The panel generates the structured document automatically — do NOT write the plan content in chat.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        type: {
+          type: "string",
+          enum: ["action_plan", "agenda"],
+          description: "action_plan for intervention/support plans; agenda for meeting agendas",
+        },
+      },
+      required: ["type"],
+    },
+  };
+
   const stream = client.messages.stream(
     {
       model: "claude-sonnet-4-6",
       max_tokens: 16000,
       system: system + sourceBlock,
       messages: apiMessages,
+      // All tools are always available — the system prompt directs which to use.
+      // In CSV mode, code_execution handles data questions; ask_clarifying_question
+      // and search_strategies handle intervention/strategy questions asked mid-analysis.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       tools: fileId
-        ? [{ type: "code_execution_20260120", name: "code_execution" } as any]
-        : [askChoicesTool, searchStrategiesTool],
+        ? [{ type: "code_execution_20260120", name: "code_execution" } as any, askChoicesTool, searchStrategiesTool, updatePlanTool]
+        : [askChoicesTool, searchStrategiesTool, updatePlanTool],
     },
     needsFilesApi ? { headers: { "anthropic-beta": "files-api-2025-04-14" } } : {}
   );
@@ -539,6 +563,16 @@ Each section must stand alone — do not cross-reference between sections. Only 
                 toolBuffer = "";
                 currentToolName = "";
                 break;
+
+              } else if (currentToolName === "update_plan") {
+                try {
+                  const { type } = JSON.parse(toolBuffer) as { type: 'action_plan' | 'agenda' };
+                  console.log('📋 update_plan:', type);
+                  send({ type: "update_plan", artifactType: type });
+                } catch {}
+                toolBuffer = "";
+                currentToolName = "";
+                break; // signal sent — client opens panel and generates
 
               } else {
                 // Code execution tool

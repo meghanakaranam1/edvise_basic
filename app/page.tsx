@@ -202,7 +202,7 @@ export default function Page() {
     const activeThresholds = thresholdsOverride ?? thresholds
     // Tracks any ask_clarifying_question tool call that fires mid-stream
     let pendingToolCall: { id: string; input: { question: string; choices: string[] } } | null = null
-    // Artifact type to auto-generate at end of stream (e.g. agenda)
+    // Artifact type to auto-generate (set by update_plan tool SSE event)
     let pendingGenerate: ArtifactType | null = null
 
     try {
@@ -216,14 +216,7 @@ export default function Page() {
         kbScope,
         onChunk(text) {
           accumulated += text
-          // Detect <!--GENERATE:agenda--> or <!--GENERATE:action_plan--> markers
-          const genMatch = accumulated.match(/<!--GENERATE:(agenda|action_plan)-->/)
-          if (genMatch && !pendingGenerate) {
-            pendingGenerate = genMatch[1] as ArtifactType
-          }
-          // Strip the marker from displayed text
-          const display = accumulated.replace(/<!--GENERATE:[^>]+-->/g, '').trim()
-          replaceLastAssistant(() => display)
+          replaceLastAssistant(() => accumulated)
         },
         onImage(data) { replaceLastAssistant(c => c, [data]) },
         onCsv(filename, data) { replaceLastAssistant(c => c, undefined, [{ filename, data }]) },
@@ -240,6 +233,9 @@ export default function Page() {
             }
             return next
           })
+        },
+        onUpdatePlan(artifactType) {
+          pendingGenerate = artifactType
         },
         onAskChoices(toolCallId, question, choices, allowMultiple) {
           // Store so we can push proper tool_use block after stream ends
