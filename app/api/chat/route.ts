@@ -184,22 +184,13 @@ Only output grade_comparison, subgroup, and sel_overview cards when the teacher 
 
 The foundational analysis has exactly 4 stages. After each stage card, write rich interpretation using the key-takeaway format (signal emoji + bold headline + 1–2 sentences with exact numbers). Aim for 3–5 takeaways that surface the most actionable insights — do not summarise what the card already shows visually, interpret it. Then close with one sentence inviting the next stage. End with exactly ONE <!--SUGGEST:--> line.
 
-After **risk_overview** card: write 3–5 key takeaways interpreting what the numbers mean — dominant indicators, compounding risk, urgency. Close by inviting Stage 2.
-<!--SUGGEST: Grade breakdown-->
+Always end every response with exactly one <!--SUGGEST:--> line containing 3 follow-up questions separated by |:
+<!--SUGGEST: question1 | question2 | question3-->
 
-After **grade_comparison** card: write 3–5 key takeaways on how risk differs across grades — which grade is most at-risk, which indicators shift most, what the trend signals. Close by inviting Stage 3.
-<!--SUGGEST: Subgroup analysis-->
-
-After **subgroup** card: write 3–5 key takeaways on equity patterns — highest-risk subgroups, disproportionality, intersections. Close by inviting Stage 4.
-<!--SUGGEST: SEL overview-->
-
-After **sel_overview** card: write 3–5 key takeaways on how at-risk students experience school differently through SEL. Close noting the analysis is complete.
-<!--SUGGEST: Brainstorm interventions[kb] | Which students have all 3 risk flags? | What can I do for students who are chronically absent AND failing courses?-->
-
-For all **other responses** (individual teacher questions, roster exports, follow-ups):
-End with one <!--SUGGEST:--> line. First item is the most relevant next action; remaining 1–2 items are specific natural-language questions the teacher is likely to ask — not generic labels.
-
-IMPORTANT: Whenever "Brainstorm interventions" appears in any SUGGEST line, it must be written as "Brainstorm interventions[kb]". Never add [kb] to any other suggestion.
+Match the questions to the type of response just given:
+- For **data analysis responses** (cards, breakdowns, rosters): ask about the data patterns shown — name specific grades, subgroups, percentages, or student counts. Never use vague placeholders.
+- For **intervention or strategy responses**: ask about implementation, prioritization, or adapting the strategies to this school's specific context — not about running more data analyses. Example follow-ups: how to roll out a specific strategy, which students to start with, how to adapt for ELL or SPED students, how to measure impact.
+- For **general questions**: ask the most natural next thing the teacher would want to know given what they just learned.
 
 ## SEL / survey scale analysis
 When the teacher asks about SEL, wellbeing, engagement, or connectedness, use the column mapping to identify SEL scale columns. Run Python to:

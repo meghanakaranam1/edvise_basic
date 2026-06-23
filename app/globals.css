@@ -61,7 +61,7 @@ body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg); color
 .sug-btn:hover { border-color: var(--primary); color: var(--primary); background: var(--primary-light); }
 .sug-btn.next-step { background: var(--accent); color: #1B3A6B; font-weight: 600; border-color: var(--accent); }
 .sug-btn.next-step:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
-.sug-btn.question { font-style: italic; color: var(--text-muted); }
+.sug-btn.question { font-style: italic; color: var(--text-muted); width: 100%; text-align: left; border-radius: 10px; }
 
 /* ── CARDS ── */
 .sc-btn { padding: 5px 12px; border-radius: 6px; font-size: 12px; font-weight: 500; cursor: pointer; font-family: inherit; border: 1px solid var(--border); background: var(--surface); color: var(--text-muted); transition: all 0.12s; }

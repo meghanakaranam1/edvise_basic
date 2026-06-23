@@ -93,14 +93,52 @@ function parseTableCsv(raw: string): { columns: string[]; rows: string[][] } {
 
 type Suggestion = { label: string; needsKB: boolean }
 
-function parseSuggestions(text: string): { text: string; suggestions: Suggestion[] } {
-  const match = text.match(/<!--SUGGEST:\s*(.*?)\s*-->/)
-  if (!match) return { text, suggestions: [] }
-  const suggestions: Suggestion[] = match[1].split('|').map((s) => s.trim()).filter(Boolean).map(s => {
+function parseSuggestions(text: string): { text: string; questions: Suggestion[] } {
+  const match = text.match(/<!--SUGGEST:\s*([\s\S]*?)\s*-->/)
+  if (!match) return { text, questions: [] }
+  const clean = text.replace(/<!--SUGGEST:[\s\S]*?-->/, '').trim()
+  const questions = match[1].split('|').map(s => s.trim()).filter(Boolean).map(s => {
     const needsKB = s.endsWith('[kb]')
     return { label: needsKB ? s.slice(0, -4).trim() : s, needsKB }
   })
-  return { text: text.replace(/<!--SUGGEST:[\s\S]*?-->/, '').trim(), suggestions }
+  return { text: clean, questions }
+}
+
+// Stage action buttons — computed from conversation history, not from model output
+const STAGE_ORDER = ['risk_overview', 'grade_comparison', 'subgroup', 'sel_overview'] as const
+type StageType = typeof STAGE_ORDER[number]
+
+const STAGE_ACTIONS: Record<string, { label: string; prompt: string; needsKB: boolean }> = {
+  grade_comparison: { label: 'Grade breakdown',  prompt: 'Grade breakdown',   needsKB: false },
+  subgroup:         { label: 'Subgroup analysis', prompt: 'Subgroup analysis', needsKB: false },
+  sel_overview:     { label: 'SEL overview',      prompt: 'SEL overview',      needsKB: false },
+}
+const BRAINSTORM_ACTION = {
+  label: 'Brainstorm interventions',
+  prompt: 'Please brainstorm targeted interventions based on the data analysis so far',
+  needsKB: true,
+}
+
+function getCardTypeFromContent(content: string): StageType | null {
+  const match = content.match(/<!--CARD:\s*\{"type"\s*:\s*"([^"]+)"/)
+  const t = match?.[1]
+  return (STAGE_ORDER as readonly string[]).includes(t ?? '') ? t as StageType : null
+}
+
+function getStageActions(
+  messages: Message[],
+  thisCardType: StageType | null,
+): Array<{ label: string; prompt: string; needsKB: boolean }> {
+  if (!thisCardType) return []
+  const completed = new Set<string>()
+  for (const m of messages) {
+    if ('content' in m && m.role === 'assistant' && !('isLoading' in m)) {
+      const t = getCardTypeFromContent(m.content)
+      if (t) completed.add(t)
+    }
+  }
+  const remaining = STAGE_ORDER.filter(s => !completed.has(s) && STAGE_ACTIONS[s]).map(s => STAGE_ACTIONS[s])
+  return completed.has('sel_overview') ? [...remaining, BRAINSTORM_ACTION] : remaining
 }
 
 function parseSourceSections(text: string): { kb: string | null; web: string | null; rest: string } {
@@ -337,10 +375,12 @@ export default function MessageList({
             )
           }
 
-          const { text: withoutSuggest, suggestions } = parseSuggestions(msg.content)
+          const { text: withoutSuggest, questions } = parseSuggestions(msg.content)
+          const thisCardType = getCardTypeFromContent(msg.content)
+          const stageActions = !(i === messages.length - 1 && isStreaming) ? getStageActions(messages, thisCardType) : []
           const { kb: kbSection, web: webSection, rest: restContent } = parseSourceSections(withoutSuggest)
           const hasTabs = !!(kbSection && webSection)
-          const parts = parseCardParts(hasTabs ? restContent : withoutSuggest)
+          const parts = parseCardParts(restContent)
           const isLast = i === messages.length - 1
           const textContent = parts.filter(p => p.type === 'text').map(p => (p as { type: 'text'; content: string }).content).join('\n').trim()
           const allSources = msg.sources ?? []
@@ -406,7 +446,7 @@ export default function MessageList({
                   {isLast && isStreaming && parts.length === 0 && (
                     <div className="typing"><span /><span /><span /></div>
                   )}
-                  {onAddNote && textContent && !isStreaming && (
+                  {onAddNote && textContent && !(isLast && isStreaming) && (
                     <button
                       onClick={() => onAddNote(textContent)}
                       className="save-note-btn"
@@ -452,21 +492,34 @@ export default function MessageList({
                       </div>
                     )
                   })()}
-                  {suggestions.length > 0 && !msg.sources?.some((_, j) => new RegExp(`\\[${j + 1}\\]`).test(withoutSuggest)) && (
+                  {(stageActions.length > 0 || questions.length > 0) && (
                     <div className="suggestions">
-                      {suggestions.map((s, j) =>
-                        j === 0 ? (
-                          <button key={j} className="sug-btn next-step" onClick={() => onSuggestionClick(s.label, s.needsKB)}>
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="11" height="11" style={{ flexShrink: 0 }}>
-                              <polyline points="9 18 15 12 9 6" />
-                            </svg>
-                            {s.label}
-                          </button>
-                        ) : (
-                          <button key={j} className="sug-btn question" onClick={() => onSuggestionClick(s.label, s.needsKB)}>
-                            {s.label}
-                          </button>
-                        )
+                      {/* Stage action buttons — deterministic from conversation history */}
+                      {stageActions.length > 0 && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                          <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', whiteSpace: 'nowrap' }}>Next steps</span>
+                          {stageActions.map((s, j) => (
+                            <button key={j} className="sug-btn next-step" onClick={() => onSuggestionClick(s.prompt, s.needsKB)}>
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="11" height="11" style={{ flexShrink: 0 }}>
+                                <polyline points="9 18 15 12 9 6" />
+                              </svg>
+                              {s.label}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      {/* Suggested questions — dynamic from model */}
+                      {questions.length > 0 && (
+                        <>
+                          <div style={{ width: '100%', fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginTop: 6, marginBottom: 2 }}>
+                            Suggested questions
+                          </div>
+                          {questions.map((s, j) => (
+                            <button key={j} className="sug-btn question" onClick={() => onSuggestionClick(s.label, s.needsKB)}>
+                              {s.label}
+                            </button>
+                          ))}
+                        </>
                       )}
                     </div>
                   )}
