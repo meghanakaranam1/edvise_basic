@@ -1,7 +1,8 @@
 'use client'
 import { useRef, useState, useEffect } from 'react'
 import type { Thresholds } from './Cards/CriteriaSettingCard'
-import { describeThresholds } from './Cards/CriteriaSettingCard'
+import { describeThresholds, CriteriaFields } from './Cards/CriteriaSettingCard'
+import type { Indicators } from '../lib/columnClassifier'
 
 export type SourceKey = 'student_success' | 'school' | 'general' | 'web'
 
@@ -13,6 +14,8 @@ interface Props {
   onRemoveFile?: () => void
   thresholds?: Thresholds
   onChangeCriteria?: (t: Thresholds) => void
+  indicators?: Indicators
+  columnUniques?: Record<string, string[]>
   csvPreview?: { columns: string[]; rows: Record<string, string>[] }
   activeKB: SourceKey[]
   onToggleSource: (key: SourceKey) => void
@@ -21,6 +24,10 @@ interface Props {
   onPdfSelect?: (file: File) => void
   onRemovePdf?: (fileId: string) => void
   focusTrigger?: number
+  onGoogleSheetImport?: () => void
+  sheetImporting?: boolean
+  isShared?: boolean
+  onSendPlain?: (text: string) => void
 }
 
 const SOURCES: { key: SourceKey; label: string; activeStyle: React.CSSProperties; inactiveStyle: React.CSSProperties }[] = [
@@ -56,31 +63,29 @@ const chipBase: React.CSSProperties = {
   transition: 'all 0.12s',
 }
 
-const sel: React.CSSProperties = {
-  border: '1px solid #d4dff7', borderRadius: 8, padding: '5px 8px',
-  fontSize: 12, color: '#2A3B7C', background: '#fff', fontFamily: 'inherit',
-}
+// Matches an "@Edvise" mention anywhere in the text (Slack-style addressing).
+// Case-insensitive; requires a word boundary so "@Edviser" etc. doesn't match.
+const EDVISE_MENTION = /@edvise\b/i
 
-const rowSt: React.CSSProperties = {
-  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-  padding: '9px 0', borderBottom: '1px solid #eef2f8',
-}
-
-function dot(color: string): React.CSSProperties {
-  return { width: 7, height: 7, borderRadius: '50%', background: color, flexShrink: 0, display: 'inline-block' }
+function parseEdviseMention(text: string): { mentionsEdvise: boolean; cleaned: string } {
+  if (!EDVISE_MENTION.test(text)) return { mentionsEdvise: false, cleaned: text }
+  return { mentionsEdvise: true, cleaned: text.replace(EDVISE_MENTION, '').replace(/\s+/g, ' ').trim() }
 }
 
 export default function MessageInput({
   onSend, onFileSelect, disabled, fileLabel, onRemoveFile,
-  thresholds, onChangeCriteria, csvPreview,
+  thresholds, onChangeCriteria, indicators, columnUniques, csvPreview,
   activeKB, onToggleSource,
   pdfFiles, pdfUploading, onPdfSelect, onRemovePdf,
   focusTrigger,
+  onGoogleSheetImport, sheetImporting,
+  isShared, onSendPlain,
 }: Props) {
   const [text, setText] = useState('')
   const [showCriteria, setShowCriteria] = useState(false)
   const [showCsvPreview, setShowCsvPreview] = useState(false)
-  const [editT, setEditT] = useState<Thresholds>({})
+  const [editT, setEditT] = useState<Thresholds>([])
+  const addressedToEdvise = EDVISE_MENTION.test(text)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const pdfInputRef = useRef<HTMLInputElement>(null)
@@ -92,7 +97,7 @@ export default function MessageInput({
 
   // Sync edit state when popover opens
   function openCriteria() {
-    setEditT(thresholds ? { ...thresholds } : {})
+    setEditT(thresholds ? [...thresholds] : [])
     setShowCriteria(true)
   }
 
@@ -113,12 +118,30 @@ export default function MessageInput({
     return order.filter(k => activeKB.includes(k)).join(',')
   }
 
+  function clearInput() {
+    setText('')
+    if (textareaRef.current) textareaRef.current.style.height = 'auto'
+  }
+
   function handleSubmit() {
     const trimmed = text.trim()
     if (!trimmed || disabled) return
+    // In a shared conversation, an inline "@Edvise" mention is how you address
+    // Edvise directly — anything else just posts to the team. Outside a shared
+    // conversation there's no team to post to, so it always goes to Edvise.
+    if (isShared && onSendPlain) {
+      const { mentionsEdvise, cleaned } = parseEdviseMention(trimmed)
+      if (!mentionsEdvise) {
+        onSendPlain(trimmed)
+        clearInput()
+        return
+      }
+      onSend(cleaned || trimmed, getKbScope())
+      clearInput()
+      return
+    }
     onSend(trimmed, getKbScope())
-    setText('')
-    if (textareaRef.current) textareaRef.current.style.height = 'auto'
+    clearInput()
   }
 
   function handleKeyDown(e: React.KeyboardEvent) {
@@ -139,13 +162,6 @@ export default function MessageInput({
     setShowCriteria(false)
   }
 
-  // Infer which rows to show from current thresholds
-  const hasAbsencePct = editT.absencePct != null
-  const hasAbsenceDays = editT.absenceDays != null
-  const hasSuspension = editT.suspensionMin != null
-  const hasFailGrade = editT.failingGrade != null
-  const hasFailCount = editT.failingCount != null
-
   return (
     <div className="input-wrap" style={{ position: 'relative' }}>
 
@@ -164,60 +180,7 @@ export default function MessageInput({
             Adjust risk criteria
           </div>
 
-          {hasAbsencePct && (
-            <div style={rowSt}>
-              <div style={{ fontSize: 12, color: '#2A3B7C', display: 'flex', alignItems: 'center', gap: 7 }}>
-                <span style={dot('#3E94A5')} /> Chronic absence
-              </div>
-              <select style={sel} value={editT.absencePct} onChange={e => setEditT(p => ({ ...p, absencePct: Number(e.target.value) }))}>
-                {[5, 10, 15, 20].map(v => <option key={v} value={v}>≥{v}% days missed</option>)}
-              </select>
-            </div>
-          )}
-
-          {hasAbsenceDays && (
-            <div style={rowSt}>
-              <div style={{ fontSize: 12, color: '#2A3B7C', display: 'flex', alignItems: 'center', gap: 7 }}>
-                <span style={dot('#3E94A5')} /> Chronic absence
-              </div>
-              <select style={sel} value={editT.absenceDays} onChange={e => setEditT(p => ({ ...p, absenceDays: Number(e.target.value) }))}>
-                {[5, 10, 15, 20, 25].map(v => <option key={v} value={v}>≥{v} days absent</option>)}
-              </select>
-            </div>
-          )}
-
-          {hasSuspension && (
-            <div style={rowSt}>
-              <div style={{ fontSize: 12, color: '#2A3B7C', display: 'flex', alignItems: 'center', gap: 7 }}>
-                <span style={dot('#B45309')} /> Suspension
-              </div>
-              <select style={sel} value={editT.suspensionMin} onChange={e => setEditT(p => ({ ...p, suspensionMin: Number(e.target.value) }))}>
-                {[1, 2, 3].map(v => <option key={v} value={v}>≥{v} suspension{v > 1 ? 's' : ''}</option>)}
-              </select>
-            </div>
-          )}
-
-          {hasFailGrade && (
-            <div style={{ ...rowSt, borderBottom: 'none' }}>
-              <div style={{ fontSize: 12, color: '#2A3B7C', display: 'flex', alignItems: 'center', gap: 7 }}>
-                <span style={dot('#c53030')} /> Academic failure
-              </div>
-              <select style={sel} value={editT.failingGrade} onChange={e => setEditT(p => ({ ...p, failingGrade: Number(e.target.value) }))}>
-                {[50, 60, 65, 70].map(v => <option key={v} value={v}>grade below {v}</option>)}
-              </select>
-            </div>
-          )}
-
-          {hasFailCount && (
-            <div style={{ ...rowSt, borderBottom: 'none' }}>
-              <div style={{ fontSize: 12, color: '#2A3B7C', display: 'flex', alignItems: 'center', gap: 7 }}>
-                <span style={dot('#c53030')} /> Academic failure
-              </div>
-              <select style={sel} value={editT.failingCount} onChange={e => setEditT(p => ({ ...p, failingCount: Number(e.target.value) }))}>
-                {[1, 2, 3].map(v => <option key={v} value={v}>≥{v} failed course{v > 1 ? 's' : ''}</option>)}
-              </select>
-            </div>
-          )}
+          <CriteriaFields indicators={indicators} columnUniques={columnUniques} value={editT} onChange={setEditT} />
 
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
             <button type="button" onClick={() => setShowCriteria(false)} style={{ fontSize: 12, color: '#7a89b8', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 8px' }}>
@@ -356,14 +319,14 @@ export default function MessageInput({
           onChange={handleInput}
           onKeyDown={handleKeyDown}
           disabled={disabled}
-          placeholder={fileLabel ? 'Ask about your students…' : 'Upload a CSV or ask a question…'}
+          placeholder={fileLabel ? 'Ask about your students…' : 'Upload a CSV/Excel file or ask a question…'}
           rows={1}
         />
         <div className="input-actions">
           <button
             type="button"
             className="icon-btn"
-            title="Upload gradebook CSV"
+            title="Upload gradebook (CSV or Excel)"
             onClick={() => fileInputRef.current?.click()}
             disabled={disabled}
           >
@@ -373,6 +336,28 @@ export default function MessageInput({
               <line x1="12" y1="3" x2="12" y2="15"/>
             </svg>
           </button>
+          {onGoogleSheetImport && (
+            <button
+              type="button"
+              className="icon-btn"
+              title="Import from Google Sheets"
+              onClick={onGoogleSheetImport}
+              disabled={disabled || sheetImporting}
+              style={{ color: '#0f9d58' }}
+            >
+              {sheetImporting ? (
+                <div style={{ width: 14, height: 14, border: '2px solid currentColor', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
+              ) : (
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <rect x="3" y="3" width="18" height="18" rx="2" />
+                  <line x1="3" y1="9" x2="21" y2="9" />
+                  <line x1="3" y1="15" x2="21" y2="15" />
+                  <line x1="9" y1="3" x2="9" y2="21" />
+                  <line x1="15" y1="3" x2="15" y2="21" />
+                </svg>
+              )}
+            </button>
+          )}
           {onPdfSelect && (
             <button
               type="button"
@@ -394,21 +379,39 @@ export default function MessageInput({
           <button
             type="button"
             className="send-btn"
+            title={isShared && onSendPlain ? (addressedToEdvise ? 'Ask Edvise' : 'Send to your team') : undefined}
             onClick={handleSubmit}
             disabled={disabled || !text.trim()}
+            style={isShared && onSendPlain && addressedToEdvise ? { background: '#3E94A5' } : undefined}
           >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="22" y1="2" x2="11" y2="13"/>
-              <polygon points="22 2 15 22 11 13 2 9 22 2"/>
-            </svg>
+            {isShared && onSendPlain && addressedToEdvise ? (
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M12 2a4 4 0 0 1 4 4v1a5 5 0 0 1 3 4.58V15a5 5 0 0 1-5 5H10a5 5 0 0 1-5-5v-3.42A5 5 0 0 1 8 7V6a4 4 0 0 1 4-4z"/>
+                <circle cx="9" cy="13" r="1"/><circle cx="15" cy="13" r="1"/>
+              </svg>
+            ) : (
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="22" y1="2" x2="11" y2="13"/>
+                <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+              </svg>
+            )}
           </button>
         </div>
       </div>
+      {isShared && onSendPlain && (
+        <div className="input-hint" style={{ marginTop: -4 }}>
+          {addressedToEdvise ? (
+            <span style={{ color: '#3E94A5', fontWeight: 600 }}>→ Asking Edvise</span>
+          ) : (
+            <>Type <strong>@Edvise</strong> to ask Edvise directly · otherwise your message goes to your team</>
+          )}
+        </div>
+      )}
       <div className="input-hint">EdVise supports educators — always apply your professional judgment.</div>
       <input
         ref={fileInputRef}
         type="file"
-        accept=".csv"
+        accept=".csv,.xlsx,.xls"
         style={{ display: 'none' }}
         onChange={(e) => {
           if (e.target.files?.[0]) onFileSelect(e.target.files[0])

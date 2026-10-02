@@ -11,14 +11,22 @@ type ContentBlock = { type: string; [key: string]: unknown };
 type SimpleMessage = { role: "user" | "assistant"; content: string | ContentBlock[] };
 
 export async function POST(req: NextRequest) {
-  const { messages, fileId, pdfFiles, thresholdPrompt, columnMapping, kbScope }: {
+  const { messages, fileId, fileIds, pdfFiles, thresholdPrompt, columnMapping, schoolContext, kbScope }: {
     messages: SimpleMessage[];
     fileId?: string;
+    // Multiple related-but-unmerged sheets (e.g. a roster plus a separate
+    // behavior log) — used instead of fileId when a teacher picked more than
+    // one sheet from a multi-tab upload without merging them first. Claude
+    // cross-references these itself via code execution rather than us
+    // pre-computing a join — see the "Reading multiple files" prompt section.
+    fileIds?: { fileId: string; filename: string }[];
     pdfFiles?: { name: string; fileId: string }[];
     thresholdPrompt?: string;
     columnMapping?: Record<string, string>;
+    schoolContext?: string;
     kbScope?: string;
   } = await req.json();
+  const hasDataFiles = !!fileId || !!fileIds?.length;
 
   // Parse source scope tokens — KB/web run whenever their chips are active.
   const scopeTokens = (kbScope ?? '').split(',').map(s => s.trim()).filter(Boolean);
@@ -37,7 +45,7 @@ export async function POST(req: NextRequest) {
   // via the search_strategies tool so the model retrieves docs with a targeted
   // query AFTER gathering context. Upfront search still runs for PDF and CSV
   // modes where docs are attached before the first LLM call.
-  const isChatMode = !fileId && !pdfFiles?.length;
+  const isChatMode = !hasDataFiles && !pdfFiles?.length;
 
   const [kbDocs, webResult] = isChatMode
     ? [[], { summary: '', sources: [] as { title: string; url: string }[] }]
@@ -76,7 +84,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  if ((fileId || kbDocs.length || pdfFiles?.length) && attachIdx >= 0) {
+  if ((hasDataFiles || kbDocs.length || pdfFiles?.length) && attachIdx >= 0) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const contentBlocks: any[] = [];
 
@@ -102,6 +110,9 @@ export async function POST(req: NextRequest) {
     if (fileId) {
       contentBlocks.push({ type: "container_upload", file_id: fileId });
     }
+    for (const f of fileIds ?? []) {
+      contentBlocks.push({ type: "container_upload", file_id: f.fileId });
+    }
 
     contentBlocks.push({ type: "text", text: apiMessages[attachIdx].content });
 
@@ -109,7 +120,7 @@ export async function POST(req: NextRequest) {
   }
 
   const thresholdLine = thresholdPrompt
-    ? `## Risk flag thresholds (use these consistently in EVERY code execution)\n${thresholdPrompt}\nRisk tiers: Critical = all present flags triggered, High = exactly 2, Moderate = exactly 1.\nAlways derive flags using the exact thresholds above — never recalculate with different criteria.`
+    ? `## Risk flag thresholds (use these consistently in EVERY code execution)\n${thresholdPrompt}\nThere are up to 3 CATEGORIES: Attendance, Behavior, Course failure. A category with multiple numbered signals above is flagged if the student trips ANY ONE of them — it still only counts as ONE category flag, never one per signal. Risk tiers are counted by category, not by signal: Critical = all present categories flagged, High = exactly 2 of the present categories, Moderate = exactly 1.\nAlways derive flags using the exact thresholds above — never recalculate with different criteria.`
     : '';
 
   const mappingLine = columnMapping && Object.keys(columnMapping).length
@@ -117,10 +128,31 @@ export async function POST(req: NextRequest) {
       Object.entries(columnMapping).map(([raw, label]) => `- \`${raw}\` → ${label}`).join('\n')
     : '';
 
-  const system = fileId
+  const schoolContextLine = schoolContext?.trim()
+    ? `## School context (the teacher saved this once in Settings — apply it automatically, never ask them to repeat it)\n${schoolContext.trim()}`
+    : '';
+
+  // Multiple sheets the teacher picked from a multi-tab upload, kept as
+  // separate files rather than pre-merged — Claude does the cross-referencing
+  // itself via code execution (validated directly: given two unmerged files
+  // it correctly found the join key on its own and computed an exact match
+  // against ground truth). Explicitly do not assume the key is always a
+  // student ID column — some sheets only have Last+First name, and different
+  // sheets may not even use the same ID scheme.
+  const multiFileLine = (fileIds && fileIds.length > 1)
+    ? `## Multiple related files are attached — not pre-merged
+The teacher included ${fileIds.length} separate files that are NOT pre-merged: ${fileIds.map(f => `"${f.filename}"`).join(', ')}. They describe the same school's students from different sources (e.g. a main roster plus a separate behavior or tardy log) and each may have its own columns and its own way of identifying a student.
+
+Before answering any question that needs more than one of these files, inspect each file's actual header row first (e.g. \`head -5\` on each) to find the column that identifies a student in EACH file individually — never assume it's called the same thing across files, and never assume it's a student ID at all. If a file has no ID column, use whatever it does have instead — commonly Last Name + First Name, optionally with Grade added to disambiguate two students who share a name. Only join on a key that actually exists, with real values, in both files you're combining — never fabricate or guess a shared value. If a question only needs one of the files, just use that one.
+
+## Risk-flag thresholds may reference a column that lives in a DIFFERENT file than the one you're currently reading
+Some risk indicators below (e.g. suspension, if based on a raw behavior/incident log) are computed from a column that isn't in the roster at all. When a threshold names a specific file, go read that file for that specific check — don't assume the roster has every column, and don't silently substitute a different file's column that happens to have a similar name.`
+    : '';
+
+  const system = hasDataFiles
     ? `You are Edvise, a teaching assistant. The teacher uploaded a gradebook CSV. Use code execution to answer every question with exact numbers from the data. Do not add numbered citations like [1] or [2] unless source documents are explicitly provided in this conversation.
 
-${thresholdLine}${mappingLine ? '\n\n' + mappingLine : ''}
+${thresholdLine}${mappingLine ? '\n\n' + mappingLine : ''}${schoolContextLine ? '\n\n' + schoolContextLine : ''}${multiFileLine ? '\n\n' + multiFileLine : ''}
 
 When you output a card, always place the <!--CARD:--> marker FIRST on its own line, then write your interpretation below it. Never repeat numbers already visible in the card — interpret them instead. For analysis responses (cards, comparisons, subgroup breakdowns), write 3–5 key takeaways using this format: lead each with a signal emoji (🚨 for urgent, 📈 for trends, 🔴 for high risk, ⚖️ for equity concerns, ✅ for positives), bold the headline, then 1–2 sentences of interpretation. Reason like an experienced instructional coach: go beyond describing what the numbers show to explaining what they imply — about root causes, about priority, about what this specific school should do first. Ground every insight in this school's actual data, not in generic research claims. Ask yourself: what does this number mean for a teacher looking at these students tomorrow morning? What does the pattern suggest about why this is happening? What would a thoughtful administrator notice that a spreadsheet wouldn't tell you? IMPORTANT: Before writing any comparison, do an explicit two-step check — (1) write down both raw numbers, (2) confirm which is numerically larger. Only then write the sentence. Re-read every sentence that contains words like "outpaces", "exceeds", "more than", "fewer than", "highest", "lowest", "largest", "smallest", "doubled", "most common" and verify the stated direction matches the numbers — if they conflict, rewrite the sentence before outputting it. Never describe a smaller number as larger or a larger number as smaller. For everything else — student lookups, ad-hoc questions — reason as thoroughly as needed.
 
@@ -137,7 +169,7 @@ import pandas as pd
 df = pd.read_csv(filepath)
 # ... rest of analysis ...
 PYEOF
-Never use /root/inputs/ — that path does not exist. The file is always under /files/input/. If multiple files are found, always use the most recently modified one — that is the file the teacher just uploaded.
+Never use /root/inputs/ — that path does not exist. The file is always under /files/input/. If multiple files are found and the "Multiple related files" section above does NOT apply, always use the most recently modified one — that is the file the teacher just uploaded. If that section DOES apply, follow its instructions instead: consult whichever of those specific files the question actually requires, rather than only the most recent one.
 
 ## Rendering results as interactive cards
 
@@ -158,6 +190,20 @@ Per group: any_flag_pct (% with any flag), each indicator count/pct, 3 pairwise 
 <!--CARD:{"type":"subgroup","data":{"total":4651,"categories":[{"tab":"Race/Ethnicity","equity_note":"One sentence equity finding","groups":[{"name":"White","n":1219,"any_flag_pct":17.3,"indicators":[{"name":"Academic Failure","count":124,"pct":10.2,"color":"#c53030"},{"name":"Chronic Absence","count":91,"pct":7.5,"color":"#3E94A5"},{"name":"Suspensions","count":55,"pct":4.5,"color":"#B45309"}],"combinations":[{"label":"Abs + Fail","count":20,"pct":1.6},{"label":"Sus + Fail","count":15,"pct":1.2},{"label":"Abs + Sus","count":6,"pct":0.5}],"all_three":{"count":9,"pct":0.7}},{"name":"Black","n":169,...},{"name":"Hispanic","n":2407,...}]},{"tab":"Gender","groups":[...]},{"tab":"SPED","groups":[...]},{"tab":"ELL","groups":[...]}]}}-->
 
 equity_note is one sentence about the most notable equity gap in that tab. Include tabs for all demographic groups available in the data.
+
+### Card 4 — Longitudinal overview (only when asked, e.g. "Show me the longitudinal trend across quarters")
+A multi-tab spreadsheet is NOT automatically longitudinal — only build this card for a category whose threshold column genuinely has sibling columns representing the SAME measurement at different points in time (e.g. "ADA Q1", "ADA Q2", "ADA Q3", "ADA Q4", or repeated snapshot dates). Do NOT treat two DIFFERENT kinds of signal in one category (e.g. a tardy column and a separate suspension column) as time points — those are parallel signals, not a time series, and stay in "static" below even if the category itself has multiple threshold signals.
+
+The request may arrive in one of two forms:
+1. **From the Longitudinal setup wizard** — the message names the exact variable(s) and their raw column names in parentheses (e.g. "Attendance (ADA as of 4/4, Last Year's ADA)"), and optionally which groups to compare (e.g. "Hispanic students, Whole School only"). Use exactly those columns and groups — don't re-derive or second-guess them. Map a group label like "Hispanic students" to whichever real value in the race/ethnicity column corresponds to it, the same way you already do for subgroup analysis. If groups weren't asked for (or the answer was "Whole School only"), only include a single "Whole School" group per variable.
+2. **The plain stage-button prompt with no wizard answers** — inspect the actual file(s) yourself for genuine multi-time-point siblings (column names containing quarter/term numbers, or multiple dated snapshots of the same metric) and compute whole-school-only, no groups.
+
+If NO category has a genuine multi-time-point signal, do not output this card at all — just tell the teacher in one sentence that this data doesn't have more than one time point for any tracked indicator, and stop there.
+
+Apply the EXACT SAME threshold definition already established for a category (from the criteria above) to each time point's column, computing a count/pct per time point per group. Any category that does NOT have multiple time points still gets computed once, whole-school (same as the risk overview), and goes in "static" — so the teacher sees the full picture, not just what's trackable over time. Output on ONE line:
+<!--CARD:{"type":"longitudinal_overview","data":{"total":253,"quarters":[{"label":"Q1","date":"Sep-Oct"},{"label":"Q2","date":"Nov-Jan"}],"variables":[{"name":"Chronic Absence","unit":"%","groups":[{"key":"whole","label":"Whole School","color":"#2A3B7C","values":[12.6,16.2],"counts":[32,41]},{"key":"hispanic","label":"Hispanic","color":"#DB2777","values":[15.8,22.1],"counts":[10,14]}]}],"static":[{"name":"Behavior","pct":17.8,"count":45},{"name":"Course Failure","pct":36.8,"count":93}]}}-->
+
+quarters/date labels should reflect whatever the actual column names or a reasonable inference of the time periods are — don't invent date ranges the data doesn't support; a plain "Q1"/"Q2" or the actual column name is fine. Every group's values/counts arrays must be the same length as quarters, in the same order. "Whole School" must always be included first in every variable's groups array, even when other groups are also requested, so there's a baseline to compare against. Use these colors for groups when they apply, otherwise pick any distinct, readable hex: Whole School #2A3B7C, Hispanic #DB2777, Black #7C3AED, White #0EA5E9, Male #059669, Female #D97706, ELL #DC2626, Special Education #4B5563.
 
 ### Roster / export
 CRITICAL: When asked to export, list, or show a roster of students you MUST use code execution to produce real data from the file. Never describe what a roster would contain, never invent counts or summaries, never use <!--EXPORT:--> or any other marker format.
@@ -246,7 +292,7 @@ When the teacher asks about interventions, strategies, supports, engagement, sch
 2. Call search_strategies with a targeted query using context from the conversation
 3. Write a detailed cited response — or for action plan/agenda requests, call update_plan to send it to the panel`
     : `You are Edvise, a helpful assistant for teachers. Answer questions conversationally and naturally. Do not volunteer research or interventions unless the teacher explicitly asks for them.
-
+${schoolContextLine ? '\n' + schoolContextLine + '\n' : ''}
 ## CRITICAL — never promise work you are not doing in this turn
 MUST NOT write text like "I'll start by…", "Let me begin…", "Please hold on while I…", or any promise of future work. Either DO THE WORK (call the tool) in this same turn, or do not announce it.
 
@@ -332,11 +378,11 @@ Each section must stand alone — do not cross-reference between sections. Only 
   // sourceMeta order must match allSources order so citation numbers [N] align correctly.
   const sourceMeta = [
     ...(pdfFiles ?? []).map(f => ({ title: f.name.replace(/\.(pdf|txt|docx)$/i, ''), kind: 'pdf' as const })),
-    ...kbDocs.map(d => ({ title: d.filename.replace(/_/g, ' ').replace(/\.(pdf|txt|docx)$/i, ''), kind: 'kb' as const })),
+    ...kbDocs.map(d => ({ title: d.filename.replace(/_/g, ' ').replace(/\.(pdf|txt|docx)$/i, ''), kind: 'kb' as const, kbDocId: d.id })),
     ...webSources.map(s => ({ title: s.title, url: s.url, kind: 'web' as const })),
   ];
 
-  const needsFilesApi = !!(fileId || kbDocs.length || pdfFiles?.length);
+  const needsFilesApi = !!(hasDataFiles || kbDocs.length || pdfFiles?.length);
 
   const askChoicesTool = {
     name: "ask_clarifying_question",
@@ -393,7 +439,7 @@ Each section must stand alone — do not cross-reference between sections. Only 
       // In CSV mode, code_execution handles data questions; ask_clarifying_question
       // and search_strategies handle intervention/strategy questions asked mid-analysis.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      tools: fileId
+      tools: hasDataFiles
         ? [{ type: "code_execution_20260120", name: "code_execution" } as any, askChoicesTool, searchStrategiesTool, updatePlanTool]
         : [askChoicesTool, searchStrategiesTool, updatePlanTool],
     },
@@ -476,6 +522,7 @@ Each section must stand alone — do not cross-reference between sections. Only 
                     ...searchKbDocs.map(d => ({
                       title: d.filename.replace(/_/g, ' ').replace(/\.(pdf|txt|docx)$/i, ''),
                       kind: 'kb' as const,
+                      kbDocId: d.id,
                     })),
                     ...searchWebResult.sources.map(s => ({ title: s.title, url: s.url, kind: 'web' as const })),
                   ];

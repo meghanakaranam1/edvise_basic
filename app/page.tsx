@@ -1,18 +1,22 @@
 'use client'
 import { useRef, useState, useEffect } from 'react'
 import './globals.css'
-import MessageList, { type Message } from './components/MessageList'
+import MessageList, { type Message, LONGITUDINAL_STAGE_PROMPT } from './components/MessageList'
 import MessageInput, { type SourceKey } from './components/MessageInput'
-import { uploadFile, streamChat, generateArtifact } from './lib/api'
+import { uploadFile, getGoogleToken, importGoogleSheet, getGoogleSheetTabs, fetchIdentityColumns, shareConversation, getConversationMembers, streamChat, generateArtifact } from './lib/api'
+import { openGoogleSheetPicker } from './lib/googlePicker'
 import RightPanel from './components/RightPanel/RightPanel'
 import Sidebar, { type MainView } from './components/Sidebar/Sidebar'
 import LoginPage from './components/Auth/LoginPage'
 import SavedView from './components/SavedView'
 import ConversationsView from './components/ConversationsView'
 import AdminKB from './components/AdminKB'
+import SchoolContextSettings from './components/Settings/SchoolContextSettings'
 import type { Note, ArtifactType, Artifacts, Report } from './components/RightPanel/types'
 import { ReportDetail } from './components/RightPanel/ReportTab'
-import { parseCsv } from './lib/csvUtils'
+import { parseCsv, parseCsvText, type CsvMeta } from './lib/csvUtils'
+import { isSpreadsheetFile, parseWorkbook } from './lib/xlsxParse'
+import { sheetsToCsv, summarizeSheet, chooseSetupSheet, type SheetTable } from './lib/sheetMerge'
 import type { Thresholds } from './components/Cards/CriteriaSettingCard'
 import { thresholdPrompt } from './components/Cards/CriteriaSettingCard'
 import { supabase } from './lib/supabase'
@@ -23,6 +27,10 @@ import {
   saveMessage,
   saveArtifact,
   listArtifacts,
+  saveConversationFiles,
+  getConversationFiles,
+  listContextRules,
+  addContextRule,
 } from './lib/db'
 
 type Phase = 'idle' | 'confirming' | 'criteria' | 'chatting'
@@ -39,6 +47,8 @@ export default function Page() {
 
   // Chat
   const [messages, setMessages] = useState<Message[]>([])
+  const messagesRef = useRef<Message[]>([])
+  useEffect(() => { messagesRef.current = messages }, [messages])
   const [phase, setPhase] = useState<Phase>('idle')
   const [isStreaming, setIsStreaming] = useState(false)
   const [fileLabel, setFileLabel] = useState<string | undefined>()
@@ -46,8 +56,23 @@ export default function Page() {
   const [columnMapping, setColumnMapping] = useState<Record<string, string> | undefined>()
   const [csvPreview, setCsvPreview] = useState<{ columns: string[]; rows: Record<string, string>[] } | undefined>()
   const [columnUniques, setColumnUniques] = useState<Record<string, string[]> | undefined>()
-  const indicatorsRef = useRef<import('./api/suggest-columns/route').Indicators>({})
+  // handleColumnsConfirmed is captured into the data_confirm card's onConfirm
+  // closure at the moment presentImportedCsv calls addMessage — since that
+  // happens in the same render generation as the setColumnUniques call just
+  // above it, the closure would otherwise see columnUniques as it was BEFORE
+  // this import (stale by one import, or empty on the very first one). A ref
+  // sidesteps that: unlike state, ref.current is always the latest value
+  // regardless of which render's closure is reading it (same reason
+  // indicatorsRef exists below).
+  const columnUniquesRef = useRef<Record<string, string[]> | undefined>(undefined)
+  const indicatorsRef = useRef<import('./api/suggest-columns/route').Indicators>([])
   const fileIdRef = useRef<string | undefined>(undefined)
+  // Extra files alongside fileIdRef, for multi-sheet uploads kept as separate
+  // (unmerged) files — fileIdRef still points at the primary sheet for the
+  // "is there an active dataset" checks and criteria/threshold detection;
+  // this holds all of them (including the primary) for the chat call to
+  // attach as multiple container_upload blocks.
+  const fileIdsRef = useRef<{ fileId: string; filename: string }[]>([])
   const apiMessages = useRef<{ role: 'user' | 'assistant'; content: string | unknown[] }[]>([])
   const conversationIdRef = useRef<string | undefined>(undefined)
   const pendingQuestionRef = useRef('')
@@ -62,6 +87,7 @@ export default function Page() {
   // Teacher-uploaded PDFs (in-memory for this session only)
   const [pdfFiles, setPdfFiles] = useState<{ name: string; fileId: string }[]>([])
   const [pdfUploading, setPdfUploading] = useState(false)
+  const [sheetImporting, setSheetImporting] = useState(false)
 
   // Lets the welcome page's "I have my own questions" card focus the textarea
   const [inputFocusTrigger, setInputFocusTrigger] = useState(0)
@@ -79,6 +105,48 @@ export default function Page() {
   const [panelExpanded, setPanelExpanded] = useState(false)
   const [panelTab, setPanelTab] = useState('notes')
   const [notes, setNotes] = useState<Note[]>([])
+  const schoolContextRef = useRef<string>('')
+
+  // Sharing a conversation into the Team Workspace
+  const [shareModalOpen, setShareModalOpen] = useState(false)
+  const [shareEmailsInput, setShareEmailsInput] = useState('')
+  const [sharing, setSharing] = useState(false)
+  const [shareResult, setShareResult] = useState<{ added: string[]; notFound: string[] } | null>(null)
+  const [members, setMembers] = useState<{ userId: string; role: string; name: string; email: string }[]>([])
+
+  async function openShareModal() {
+    setShareResult(null)
+    setShareModalOpen(true)
+    if (session && conversationIdRef.current) {
+      const m = await getConversationMembers(conversationIdRef.current, session.access_token)
+      setMembers(m)
+    }
+  }
+
+  async function handleShare() {
+    if (!session || !conversationIdRef.current) return
+    const emails = shareEmailsInput.split(',').map(e => e.trim()).filter(Boolean)
+    if (!emails.length) return
+    setSharing(true)
+    try {
+      const result = await shareConversation(conversationIdRef.current, emails, session.access_token)
+      setShareResult(result)
+      setShareEmailsInput('')
+      const m = await getConversationMembers(conversationIdRef.current, session.access_token)
+      setMembers(m)
+      setSidebarRefreshKey(k => k + 1)
+    } catch (err) {
+      setShareResult({ added: [], notFound: [] })
+      console.error('Failed to share conversation:', err)
+    } finally {
+      setSharing(false)
+    }
+  }
+
+  async function refreshSchoolContext(userId: string) {
+    const rules = await listContextRules(userId)
+    schoolContextRef.current = rules.filter(r => r.enabled).map(r => r.text).join('\n\n')
+  }
   const [artifacts, setArtifacts] = useState<Artifacts>({})
   const [reportModal, setReportModal] = useState<{ report: Report; date: string; isNew: boolean } | null>(null)
   const [generating, setGenerating] = useState<string | null>(null)
@@ -102,6 +170,7 @@ export default function Page() {
     apiMessages.current = []
     setPhase('idle')
     fileIdRef.current = undefined
+    fileIdsRef.current = []
     conversationIdRef.current = undefined
     setActiveConversationId(undefined)
     setThresholds(undefined)
@@ -122,7 +191,12 @@ export default function Page() {
           school_name: session.user.user_metadata?.school_name ?? '',
         },
         { onConflict: 'id', ignoreDuplicates: true }
-      ).then(({ error }) => { if (error) console.error('profile upsert failed:', error) })
+      ).then(({ error }) => {
+        if (error) console.error('profile upsert failed:', error.message, '| code:', error.code, '| details:', error.details, '| hint:', error.hint)
+      })
+      refreshSchoolContext(session.user.id)
+    } else {
+      schoolContextRef.current = ''
     }
   }, [session?.user?.id])
 
@@ -138,6 +212,86 @@ export default function Page() {
 
   function addMessage(msg: Message) {
     setMessages(prev => [...prev, msg])
+  }
+
+  // Live sync for shared conversations: teammates' messages (and Edvise's replies to them)
+  // appear without a refresh. Own messages are skipped since they're already added locally
+  // when sent; dedup for others is by recent role+content match (DB row ids aren't tracked
+  // on locally-added messages, so exact-id dedup isn't available here).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const channelRef = useRef<any>(null)
+  const [remoteTyping, setRemoteTyping] = useState<string | null>(null)
+  // True while this viewer is rendering someone else's Edvise answer as it streams
+  // in live (via broadcast chunks), rather than one they triggered themselves.
+  const remoteStreamingRef = useRef(false)
+
+  useEffect(() => {
+    if (!activeConversationId || !session) return
+    const channel = supabase
+      .channel(`messages-${activeConversationId}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'messages', filter: `conversation_id=eq.${activeConversationId}` },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (payload: any) => {
+          const row = payload.new as { role: 'user' | 'assistant'; content: string; user_id: string | null }
+          if (row.role === 'user') {
+            if (row.user_id === session.user.id) return
+            const alreadyHave = messagesRef.current.slice(-3).some(m => 'content' in m && m.role === 'user' && m.content === row.content)
+            if (!alreadyHave) {
+              const sender = members.find(m => m.userId === row.user_id)
+              addMessage({ role: 'user', content: row.content, senderName: sender?.name ?? 'Teammate' })
+            }
+          } else {
+            setRemoteTyping(null)
+            if (remoteStreamingRef.current) {
+              // Reconcile with the authoritative saved text, in case a broadcast
+              // chunk was dropped in transit (Realtime broadcast isn't guaranteed
+              // delivery, unlike the row insert itself).
+              remoteStreamingRef.current = false
+              replaceLastAssistant(() => row.content)
+            } else {
+              const alreadyHave = messagesRef.current.slice(-3).some(m => 'content' in m && m.role === 'assistant' && m.content === row.content)
+              if (!alreadyHave) addMessage({ role: 'assistant', content: row.content })
+            }
+          }
+          apiMessages.current.push({ role: row.role, content: row.content })
+        }
+      )
+      // Ephemeral "Edvise is answering…" signal — not persisted, just broadcast live
+      // to whoever else has this conversation open while a request is in flight.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .on('broadcast', { event: 'edvise_typing' }, (msg: any) => {
+        const { userId, name, status } = msg.payload ?? {}
+        if (userId === session.user.id) return
+        if (status === 'start') remoteStreamingRef.current = false
+        setRemoteTyping(status === 'start' ? (name ?? 'Someone') : null)
+      })
+      // Relays the asker's own streamed tokens so teammates see the answer build
+      // live, not just a typing indicator followed by the finished text.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .on('broadcast', { event: 'edvise_stream' }, (msg: any) => {
+        const { userId, chunk } = msg.payload ?? {}
+        if (userId === session.user.id || !chunk) return
+        setRemoteTyping(null)
+        if (!remoteStreamingRef.current) {
+          remoteStreamingRef.current = true
+          addMessage({ role: 'assistant', content: chunk })
+        } else {
+          replaceLastAssistant(prev => prev + chunk)
+        }
+      })
+      .subscribe()
+    channelRef.current = channel
+    setRemoteTyping(null)
+    remoteStreamingRef.current = false
+    return () => { supabase.removeChannel(channel); channelRef.current = null }
+  }, [activeConversationId, session?.user?.id, members])
+
+  function broadcastEdviseTyping(status: 'start' | 'stop') {
+    if (!channelRef.current || !session) return
+    const name = members.find(m => m.userId === session.user.id)?.name ?? session.user.email ?? 'A teammate'
+    channelRef.current.send({ type: 'broadcast', event: 'edvise_typing', payload: { userId: session.user.id, name, status } })
   }
 
   function replaceLastAssistant(
@@ -165,6 +319,16 @@ export default function Page() {
     })
   }
 
+  // Plain message to teammates in a shared conversation — persisted and broadcast
+  // via realtime, but never sent to Edvise. Kept in apiMessages so that if someone
+  // later clicks "Ask Edvise", it has the intervening team discussion as context.
+  async function doSendPlain(userText: string) {
+    if (isStreaming || !session || !conversationIdRef.current) return
+    addMessage({ role: 'user', content: userText })
+    apiMessages.current.push({ role: 'user', content: userText })
+    saveMessage(conversationIdRef.current, 'user', userText, session.user.id).catch(() => {})
+  }
+
   async function doSend(userText: string, kbScope = '', thresholdsOverride?: Thresholds, hidden = false, clarifyToolCallId?: string) {
     if (isStreaming) return
     setMainView('chat')
@@ -173,10 +337,18 @@ export default function Page() {
     if (session && !conversationIdRef.current && fileIdRef.current) {
       try {
         const title = userText.slice(0, 60)
-        const convo = await createConversation(title)
+        const convo = await createConversation(title, session.user.id)
         conversationIdRef.current = convo.id
         setActiveConversationId(convo.id)
         setSidebarRefreshKey(k => k + 1)
+        // Persist uploaded file references so they survive logout/reload
+        const filesToSave = [
+          ...(fileIdsRef.current.length
+            ? fileIdsRef.current.map(f => ({ file_id: f.fileId, filename: f.filename, file_type: 'csv' }))
+            : fileIdRef.current ? [{ file_id: fileIdRef.current, filename: fileLabel ?? 'data.csv', file_type: 'csv' }] : []),
+          ...pdfFiles.map(f => ({ file_id: f.fileId, filename: f.name, file_type: 'pdf' })),
+        ]
+        if (filesToSave.length) saveConversationFiles(convo.id, filesToSave).catch(() => {})
       } catch (err) { console.error('createConversation failed:', err) }
     }
 
@@ -192,10 +364,11 @@ export default function Page() {
     }
     addMessage({ role: 'assistant', content: '' })
     setIsStreaming(true)
+    broadcastEdviseTyping('start')
 
     // Persist user message
     if (session && conversationIdRef.current) {
-      saveMessage(conversationIdRef.current, 'user', userText).catch(() => {})
+      saveMessage(conversationIdRef.current, 'user', userText, session.user.id).catch(() => {})
     }
 
     let accumulated = ''
@@ -209,14 +382,20 @@ export default function Page() {
       await streamChat({
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         messages: apiMessages.current as any,
-        fileId: fileIdRef.current,
+        // Multiple unmerged sheets: send them all as fileIds so Claude can
+        // cross-reference them itself. Otherwise, the single-file path as before.
+        ...(fileIdsRef.current.length > 1
+          ? { fileIds: fileIdsRef.current }
+          : { fileId: fileIdRef.current }),
         pdfFiles: pdfFiles.length ? pdfFiles : undefined,
         thresholdPrompt: activeThresholds ? thresholdPrompt(activeThresholds, indicatorsRef.current) : undefined,
         columnMapping: columnMapping ?? undefined,
+        schoolContext: schoolContextRef.current || undefined,
         kbScope,
         onChunk(text) {
           accumulated += text
           replaceLastAssistant(() => accumulated)
+          if (session) channelRef.current?.send({ type: 'broadcast', event: 'edvise_stream', payload: { userId: session.user.id, chunk: text } })
         },
         onImage(data) { replaceLastAssistant(c => c, [data]) },
         onCsv(filename, data) { replaceLastAssistant(c => c, undefined, [{ filename, data }]) },
@@ -292,6 +471,7 @@ export default function Page() {
       replaceLastAssistant(() => `Error: ${String(err)}`)
     } finally {
       setIsStreaming(false)
+      broadcastEdviseTyping('stop')
     }
   }
 
@@ -311,49 +491,204 @@ export default function Page() {
     setPdfFiles(prev => prev.filter(f => f.fileId !== fileId))
   }
 
-  async function handleFileSelect(file: File) {
+  function resetForNewImport(loadingLabel: string) {
     setMessages([])
     apiMessages.current = []
     setPhase('idle')
     fileIdRef.current = undefined
+    fileIdsRef.current = []
     conversationIdRef.current = undefined
     setActiveConversationId(undefined)
     setThresholds(undefined)
     setColumnMapping(undefined)
     setCsvPreview(undefined)
     setColumnUniques(undefined)
-    indicatorsRef.current = {}
-    setFileLabel(`Reading ${file.name}…`)
+    columnUniquesRef.current = undefined
+    indicatorsRef.current = []
+    setFileLabel(loadingLabel)
     addMessage({ role: 'assistant', isLoading: true })
+  }
 
+  // Shared by file upload and Google Sheets import: given parsed CSV metadata and
+  // the Anthropic file id it was uploaded to, ask Claude to label columns and
+  // show the confirmation card. `extra` lets a multi-sheet import (see
+  // presentImportedSheets) fold in indicators/columns/labels found on OTHER
+  // sheets than the one being confirmed here — most commonly a disciplinary
+  // column, which almost never lives on the roster. Anything this sheet finds
+  // or defines on its own takes priority over the extras on a naming conflict.
+  async function presentImportedCsv(
+    meta: CsvMeta,
+    fileId: string,
+    formulaRules?: string[],
+    extra?: {
+      indicators?: import('./api/suggest-columns/route').Indicators
+      columnUniques?: Record<string, string[]>
+      columns?: string[]
+      labels?: Record<string, string>
+      columnSources?: Record<string, string>
+      // The real uploaded filename backing `meta`, when it differs from
+      // meta.filename — presentImportedSheets sets meta.filename to the
+      // original workbook name for display, but signals need the actual
+      // per-sheet csv filename Claude can find under /files/input/.
+      setupSourceFile?: string
+    }
+  ) {
+    fileIdRef.current = fileId
+    setFileLabel(meta.filename)
+    setCsvPreview({ columns: meta.columns, rows: meta.preview })
+    const mergedUniques = { ...extra?.columnUniques, ...meta.columnUniques }
+    setColumnUniques(mergedUniques)
+    columnUniquesRef.current = mergedUniques
+
+    // Ask Claude to suggest human-readable labels and classify risk indicator columns
+    let suggestedLabels: Record<string, string> = {}
+    let detectedIndicators: import('./api/suggest-columns/route').Indicators = []
     try {
-      const [meta, { fileId: id }] = await Promise.all([parseCsv(file), uploadFile(file)])
-      fileIdRef.current = id
-      setFileLabel(meta.filename)
-      setCsvPreview({ columns: meta.columns, rows: meta.preview })
-      setColumnUniques(meta.columnUniques)
+      const res = await fetch('/api/suggest-columns', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ columns: meta.columns, preview: meta.preview, columnUniques: meta.columnUniques }),
+      })
+      if (res.ok) {
+        const body = await res.json()
+        suggestedLabels = body.labels ?? body  // backward-compat if labels is missing
+        detectedIndicators = body.indicators ?? []
+      }
+    } catch { /* non-fatal — card falls back to title-case */ }
 
-      // Ask Claude to suggest human-readable labels and classify risk indicator columns
-      let suggestedLabels: Record<string, string> = {}
-      let detectedIndicators: import('./api/suggest-columns/route').Indicators = {}
-      try {
-        const res = await fetch('/api/suggest-columns', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ columns: meta.columns, preview: meta.preview }),
-        })
-        if (res.ok) {
-          const body = await res.json()
-          suggestedLabels = body.labels ?? body  // backward-compat if labels is missing
-          detectedIndicators = body.indicators ?? {}
-        }
-      } catch { /* non-fatal — card falls back to title-case */ }
+    const setupSourceFile = extra?.setupSourceFile ?? meta.filename
+    indicatorsRef.current = [
+      ...detectedIndicators.map(s => ({ ...s, sourceFile: s.sourceFile ?? setupSourceFile })),
+      ...(extra?.indicators ?? []),
+    ]
+    const allColumns = [...meta.columns, ...(extra?.columns ?? []).filter(c => !meta.columns.includes(c))]
+    const allLabels = { ...extra?.labels, ...suggestedLabels }
+    setMessages(prev => prev.filter(m => !('isLoading' in m)))
+    setPhase('confirming')
+    addMessage({ role: 'card', type: 'data_confirm', data: { ...meta, columns: allColumns, suggestedLabels: allLabels, formulaRules, columnSources: extra?.columnSources }, onConfirm: handleColumnsConfirmed })
+  }
 
-      indicatorsRef.current = detectedIndicators
-      console.log('📊 Detected indicators:', detectedIndicators)
+  function tableSample(t: SheetTable): Record<string, string>[] {
+    return t.rows.slice(0, 5).map(r => Object.fromEntries(t.headers.map((h, i) => [h, r[i] ?? ''])))
+  }
+
+  // Sheets are never merged — each selected sheet is uploaded as its own
+  // separate, untouched file, and Claude cross-references them itself via
+  // code execution when a question needs more than one (validated directly:
+  // given two unmerged files, it correctly found the join key per file on its
+  // own — ID in one, name in another — and computed an exact match against
+  // known ground truth). Merging used to force every sheet into one flattened
+  // table for setup, which is exactly what caused a real bug: a behavior
+  // sheet's "any incident" count got mislabeled as "suspension," silently
+  // conflating a parent conference with an actual suspension. One sheet
+  // (whichever is naturally one-row-per-student — picked automatically, never
+  // shown to the teacher as a "primary" sheet) still owns the "N students"
+  // count and drives absence/academic-failure detection, but the column
+  // confirmation screen itself shows EVERY selected sheet's columns — every
+  // other sheet is independently classified for its own labels and, most
+  // often, a disciplinary column with real category values (e.g. "In School
+  // Suspension" vs. "Parent Conference") rather than a pre-counted number.
+  async function presentImportedSheets(tables: SheetTable[], idxs: number[], filename: string) {
+    addMessage({ role: 'assistant', isLoading: true })
+    try {
+      const summaries = tables.map(summarizeSheet)
+      const setupIdx = chooseSetupSheet(summaries, idxs)
+      const otherIdxs = idxs.filter(i => i !== setupIdx)
+
+      const uploads = await Promise.all(idxs.map(async i => {
+        const table = tables[i]
+        const csvText = sheetsToCsv(table.headers, table.rows)
+        const csvFilename = `${table.name}.csv`
+        const csvFile = new File([csvText], csvFilename, { type: 'text/csv' })
+        const { fileId: id } = await uploadFile(csvFile)
+        return { i, fileId: id, filename: csvFilename, csvText }
+      }))
+      fileIdsRef.current = uploads.map(u => ({ fileId: u.fileId, filename: u.filename }))
+
+      // Classify every other sheet IN PARALLEL, not one at a time — this can
+      // easily be 3-4 sheets, and each classification call takes a few
+      // seconds on its own, so doing them sequentially would make a 5-sheet
+      // import noticeably slower for no reason (they're fully independent).
+      let extraColumns: string[] = []
+      const columnSources: Record<string, string> = {}
+      const otherResults = await Promise.all(otherIdxs.map(async i => {
+        const u = uploads.find(x => x.i === i)!
+        const otherMeta = parseCsvText(u.csvText, u.filename)
+        extraColumns.push(...otherMeta.columns)
+        otherMeta.columns.forEach(c => { if (!columnSources[c]) columnSources[c] = tables[i].name })
+        try {
+          const res = await fetch('/api/suggest-columns', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ columns: otherMeta.columns, preview: otherMeta.preview, columnUniques: otherMeta.columnUniques }),
+          })
+          if (res.ok) {
+            const body = await res.json()
+            const found: import('./api/suggest-columns/route').Indicators = body.indicators ?? []
+            const foundLabels: Record<string, string> = body.labels ?? {}
+            // Every sheet's own signals are kept, not just the first found —
+            // e.g. a tardy log and a separate suspension log can BOTH
+            // contribute independent "behavior" signals, combined with OR
+            // later in the criteria step rather than one silently winning.
+            return { labels: foundLabels, columnUniques: otherMeta.columnUniques, indicators: found.map(s => ({ ...s, sourceFile: u.filename })) }
+          }
+        } catch { /* non-fatal — this sheet's columns just won't get labeled/classified */ }
+        return { labels: {}, columnUniques: {}, indicators: [] as import('./api/suggest-columns/route').Indicators }
+      }))
+      extraColumns = Array.from(new Set(extraColumns))
+      const extraLabels = Object.assign({}, ...otherResults.map(r => r.labels))
+      const extraColumnUniques = Object.assign({}, ...otherResults.map(r => r.columnUniques))
+      const extraIndicators: import('./api/suggest-columns/route').Indicators = otherResults.flatMap(r => r.indicators)
+
+      const setupUpload = uploads.find(u => u.i === setupIdx)!
+      const meta = parseCsvText(setupUpload.csvText, filename)
+      const setupColumnSet = new Set(meta.columns)
+      for (const c of Object.keys(columnSources)) if (setupColumnSet.has(c)) delete columnSources[c]
+      await presentImportedCsv(meta, setupUpload.fileId, undefined, {
+        indicators: extraIndicators,
+        columnUniques: extraColumnUniques,
+        columns: extraColumns,
+        labels: extraLabels,
+        columnSources,
+        setupSourceFile: setupUpload.filename,
+      })
+
+      if (idxs.length > 1) {
+        addMessage({ role: 'assistant', content: `Kept all ${idxs.length} selected sheets attached separately — nothing was merged. "${tables[setupIdx].name}" is the one-row-per-student sheet, so its ${meta.rows.toLocaleString()} rows are the "students" count above, but the column list below includes every selected sheet's columns; Edvise can reference the raw files (${otherIdxs.map(i => `"${tables[i].name}"`).join(', ')}) directly whenever a question needs them.` })
+      }
+    } catch (err) {
       setMessages(prev => prev.filter(m => !('isLoading' in m)))
-      setPhase('confirming')
-      addMessage({ role: 'card', type: 'data_confirm', data: { ...meta, suggestedLabels }, onConfirm: handleColumnsConfirmed })
+      addMessage({ role: 'assistant', content: `Could not prepare sheets: ${String(err)}` })
+    }
+  }
+
+  async function handleFileSelect(file: File) {
+    resetForNewImport(`Reading ${file.name}…`)
+    try {
+      if (isSpreadsheetFile(file.name)) {
+        const tables = await parseWorkbook(file)
+        if (tables.length === 0) throw new Error('No sheets with data found in that file')
+        if (tables.length === 1) {
+          setMessages(prev => prev.filter(m => !('isLoading' in m)))
+          await presentImportedSheets(tables, [0], file.name)
+        } else {
+          // Ask Claude which column identifies a student in each sheet before
+          // building the picker — there's no fixed header spelling to regex-match
+          // against, so this has to look at the actual headers/values per sheet.
+          setFileLabel(`Reading ${file.name} — analyzing ${tables.length} sheets…`)
+          await Promise.all(tables.map(async t => {
+            t.identityHint = await fetchIdentityColumns(t.headers, tableSample(t))
+          }))
+          setMessages(prev => prev.filter(m => !('isLoading' in m)))
+          addMessage({
+            role: 'card', type: 'sheet_picker', filename: file.name, sheets: tables.map(summarizeSheet),
+            onConfirm: (idxs) => presentImportedSheets(tables, idxs, file.name),
+          })
+        }
+        return
+      }
+      const [meta, { fileId: id }] = await Promise.all([parseCsv(file), uploadFile(file)])
+      await presentImportedCsv(meta, id)
     } catch (err) {
       setMessages(prev => prev.filter(m => !('isLoading' in m)))
       setFileLabel(undefined)
@@ -361,10 +696,93 @@ export default function Page() {
     }
   }
 
-  function handleColumnsConfirmed(mapping: Record<string, string>) {
+  // Imports the chosen tab (and any enrichment tabs) from a Google Sheet, merging
+  // server-side, then feeds the result into the same confirmation pipeline as a
+  // plain CSV upload.
+  async function importAndPresentGoogleSheet(
+    spreadsheetId: string,
+    accessToken: string,
+    tabs?: { primaryTab: string; enrichTabs: string[] }
+  ) {
+    addMessage({ role: 'assistant', isLoading: true })
+    try {
+      const { fileId: id, filename, csv, formulaRules, warnings } = await importGoogleSheet(spreadsheetId, accessToken, tabs)
+      const meta = parseCsvText(csv, filename)
+      await presentImportedCsv(meta, id, formulaRules)
+      if (warnings?.length) addMessage({ role: 'assistant', content: warnings.map(w => `- ${w}`).join('\n') })
+    } catch (err) {
+      setMessages(prev => prev.filter(m => !('isLoading' in m)))
+      addMessage({ role: 'assistant', content: `Could not import from Google Sheets: ${describeGoogleSheetsError(err)}` })
+    }
+  }
+
+  // The picker is restricted to native Google Sheets, but this is a cheap
+  // extra safety net — an unconverted Excel file uploaded to Drive triggers
+  // this exact API error, and the raw JSON blob isn't actionable for a teacher.
+  function describeGoogleSheetsError(err: unknown): string {
+    const message = err instanceof Error ? err.message : String(err)
+    if (message.includes('must not be an Office file')) {
+      return 'That file is an Excel file stored in Google Drive, not a native Google Sheet, so Google\'s API can\'t read it directly. Open it in Drive and use "File > Save as Google Sheets," or use the "Upload Excel" button instead to import it directly.'
+    }
+    return message
+  }
+
+  async function handleGoogleSheetImport() {
+    if (!session) return
+    setSheetImporting(true)
+    try {
+      const accessToken = session.access_token
+      const tokenResp = await getGoogleToken(accessToken, window.location.href)
+      if (tokenResp.needsAuth && tokenResp.authUrl) {
+        // Full-page redirect to Google's consent screen; our own callback route
+        // sends the browser back here once the teacher approves.
+        window.location.href = tokenResp.authUrl
+        return
+      }
+      if (!tokenResp.token) throw new Error('Could not get a Google access token')
+
+      const spreadsheetId = await openGoogleSheetPicker(tokenResp.token, process.env.NEXT_PUBLIC_GOOGLE_PICKER_API_KEY ?? '')
+      if (!spreadsheetId) return // teacher cancelled the picker
+
+      resetForNewImport('Importing from Google Sheets…')
+      const { single, tabs, spreadsheetTitle } = await getGoogleSheetTabs(spreadsheetId, accessToken)
+      setMessages(prev => prev.filter(m => !('isLoading' in m)))
+      if (single || tabs.length <= 1) {
+        addMessage({ role: 'assistant', isLoading: true })
+        await importAndPresentGoogleSheet(spreadsheetId, accessToken)
+      } else {
+        addMessage({
+          role: 'card', type: 'sheet_picker', filename: spreadsheetTitle, sheets: tabs,
+          onConfirm: (idxs) => {
+            const baseIdx = chooseSetupSheet(tabs, idxs)
+            const enrichIdxs = idxs.filter(i => i !== baseIdx)
+            return importAndPresentGoogleSheet(spreadsheetId, accessToken, {
+              primaryTab: tabs[baseIdx].name,
+              enrichTabs: enrichIdxs.map(i => tabs[i].name),
+            })
+          },
+        })
+      }
+    } catch (err) {
+      setMessages(prev => prev.filter(m => !('isLoading' in m)))
+      setFileLabel(undefined)
+      addMessage({ role: 'assistant', content: `Could not import from Google Sheets: ${describeGoogleSheetsError(err)}` })
+    } finally {
+      setSheetImporting(false)
+    }
+  }
+
+  function handleColumnsConfirmed(mapping: Record<string, string>, formulaRulesText?: string) {
     setColumnMapping(mapping)
     setPhase('criteria')
-    addMessage({ role: 'card', type: 'criteria', columnMapping: mapping, columnUniques: columnUniques ?? {}, indicators: indicatorsRef.current, onConfirm: handleCriteriaConfirmed })
+    if (formulaRulesText && session) {
+      const userId = session.user.id
+      const lines = formulaRulesText.split('\n').map(l => l.trim()).filter(Boolean)
+      Promise.all(lines.map(line => addContextRule(userId, line)))
+        .then(() => refreshSchoolContext(userId))
+        .catch(err => console.error('Failed to save formula rules to context:', err))
+    }
+    addMessage({ role: 'card', type: 'criteria', columnMapping: mapping, columnUniques: columnUniquesRef.current ?? {}, indicators: indicatorsRef.current, onConfirm: handleCriteriaConfirmed })
   }
 
   function handleCriteriaConfirmed(t: Thresholds) {
@@ -383,17 +801,42 @@ export default function Page() {
     setActiveConversationId(id)
     conversationIdRef.current = id
     setMainView('chat')
+    setMembers([])
 
-    // Load messages from Supabase
+    // Load messages, file references, and the member list (for attributing
+    // teammates' messages) from Supabase
     try {
-      const dbMsgs = await getConversationMessages(id)
+      const [dbMsgs, files, memberList] = await Promise.all([
+        getConversationMessages(id),
+        getConversationFiles(id),
+        session ? getConversationMembers(id, session.access_token) : Promise.resolve([]),
+      ])
+      setMembers(memberList)
       const loaded: Message[] = dbMsgs.map(m => {
-        if (m.role === 'user') return { role: 'user' as const, content: m.content, id: m.id }
+        if (m.role === 'user') {
+          const isOwn = !m.user_id || m.user_id === session?.user?.id
+          if (isOwn) return { role: 'user' as const, content: m.content, id: m.id }
+          const sender = memberList.find(mem => mem.userId === m.user_id)
+          return { role: 'user' as const, content: m.content, id: m.id, senderName: sender?.name ?? 'Teammate' }
+        }
         return { role: 'assistant' as const, content: m.content, id: m.id }
       })
       setMessages(loaded)
       apiMessages.current = dbMsgs.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content }))
       setPhase('chatting')
+      // Restore uploaded file references — a conversation may have multiple
+      // unmerged CSVs (a multi-sheet upload kept as separate files) or just one.
+      const csvFiles = files.filter(f => f.file_type === 'csv')
+      const pdfs = files.filter(f => f.file_type === 'pdf')
+      if (csvFiles.length > 1) {
+        fileIdsRef.current = csvFiles.map(f => ({ fileId: f.file_id, filename: f.filename }))
+        fileIdRef.current = csvFiles[0].file_id
+        setFileLabel(`${csvFiles.length} sheets (${csvFiles[0].filename}, +${csvFiles.length - 1} more)`)
+      } else if (csvFiles.length === 1) {
+        fileIdRef.current = csvFiles[0].file_id
+        setFileLabel(csvFiles[0].filename)
+      }
+      if (pdfs.length) setPdfFiles(pdfs.map(f => ({ name: f.filename, fileId: f.file_id })))
     } catch {
       addMessage({ role: 'assistant', content: 'Could not load conversation.' })
     }
@@ -404,13 +847,16 @@ export default function Page() {
     apiMessages.current = []
     setPhase('idle')
     fileIdRef.current = undefined
+    fileIdsRef.current = []
     conversationIdRef.current = undefined
     setActiveConversationId(undefined)
     setThresholds(undefined)
     setCsvPreview(undefined)
     setColumnUniques(undefined)
+    columnUniquesRef.current = undefined
     setFileLabel(undefined)
     setPdfFiles([])
+    setMembers([])
     setMainView('chat')
   }
 
@@ -424,7 +870,7 @@ export default function Page() {
       if (!fileIdRef.current) {
         addMessage({
           role: 'assistant',
-          content: `The foundational analysis walks through **4 stages**:\n\n1. **Risk Overview** — school-wide picture of how many students carry risk flags\n2. **Grade Breakdown** — where risk is most concentrated by grade level\n3. **Subgroup Analysis** — equity patterns across race/ethnicity, ELL status, and gender\n4. **SEL Analysis** — how at-risk students experience school through engagement, connectedness, and wellbeing\n\nUpload your gradebook CSV below to begin.`,
+          content: `The foundational analysis walks through **4 stages**:\n\n1. **Risk Overview** — school-wide picture of how many students carry risk flags\n2. **Grade Breakdown** — where risk is most concentrated by grade level\n3. **Subgroup Analysis** — equity patterns across race/ethnicity, ELL status, and gender\n4. **SEL Analysis** — how at-risk students experience school through engagement, connectedness, and wellbeing\n\nUpload your gradebook (CSV or Excel) below to begin.`,
         })
         setInputFocusTrigger(n => n + 1)
         return
@@ -437,7 +883,7 @@ export default function Page() {
       return
     }
     if (text === 'I have my own questions') {
-      addMessage({ role: 'assistant', content: "Go ahead — ask anything. You can upload a CSV, a PDF, or just type your question." })
+      addMessage({ role: 'assistant', content: "Go ahead — ask anything. You can upload a CSV/Excel file, a PDF, or just type your question." })
       setInputFocusTrigger(n => n + 1)
       return
     }
@@ -485,10 +931,10 @@ export default function Page() {
     // Indicators: only show the ones configured in thresholds
     const indicatorOptions: string[] = (() => {
       const opts: string[] = []
-      if (!thresholds) return ['Academic Failure', 'Chronic Absence', 'Suspensions / Behavior', 'All risk indicators']
-      if (thresholds.absencePct != null || thresholds.absenceDays != null) opts.push('Chronic Absence')
-      if (thresholds.suspensionMin != null) opts.push('Suspensions / Behavior')
-      if (thresholds.failingGrade != null || thresholds.failingCount != null) opts.push('Academic Failure')
+      if (!thresholds || !thresholds.length) return ['Academic Failure', 'Chronic Absence', 'Suspensions / Behavior', 'All risk indicators']
+      if (thresholds.some(t => t.category === 'attendance')) opts.push('Chronic Absence')
+      if (thresholds.some(t => t.category === 'behavior')) opts.push('Suspensions / Behavior')
+      if (thresholds.some(t => t.category === 'courseFailure')) opts.push('Academic Failure')
       if (opts.length > 1) opts.push('All risk indicators')
       return opts.length ? opts : ['Academic Failure', 'Chronic Absence', 'Suspensions / Behavior', 'All risk indicators']
     })()
@@ -516,7 +962,95 @@ export default function Page() {
       showBrainstormCard()
       return
     }
+    if (text === LONGITUDINAL_STAGE_PROMPT) {
+      showLongitudinalWizard()
+      return
+    }
     doSend(text, needsKB ? getKbScope() : '')
+  }
+
+  // Which groups exist in this data — same detection heuristic as the
+  // brainstorm subgroup step, kept separate so a change to one doesn't
+  // silently affect the other's already-working behavior.
+  function computeGroupOptions(): string[] {
+    if (!columnMapping) return []
+    const labels = Object.values(columnMapping).map(l => l.toLowerCase())
+    const opts: string[] = []
+    if (labels.some(l => /race|ethnicity/i.test(l))) opts.push('Hispanic students', 'Black students', 'White students')
+    if (labels.some(l => /gender|sex\b/i.test(l))) opts.push('Male students', 'Female students')
+    if (labels.some(l => /special.ed|sped|\biep\b/i.test(l))) opts.push('Special Education students')
+    if (labels.some(l => /\bell\b|english.learn|esl/i.test(l))) opts.push('ELL students')
+    return opts
+  }
+
+  type LongCandidate = { category: string; type: string; signals: import('./api/suggest-columns/route').Indicators }
+
+  // A category with 2+ signals of the SAME type is treated as a genuine
+  // time-series candidate — the classifier already collapses same-period
+  // duplicates (e.g. excused/unexcused/total for one date), so surviving
+  // same-type siblings represent different points in time. Behavior is
+  // excluded: multiple behavior signals routinely mean different EVENT TYPES
+  // (tardy vs. suspension), not different times, and that can't be told
+  // apart from this metadata alone — Claude's own system-prompt instructions
+  // are the backstop for whatever this heuristic still gets wrong.
+  function detectLongitudinalCandidates(): LongCandidate[] {
+    const bySignatureKey = new Map<string, import('./api/suggest-columns/route').Indicators>()
+    for (const s of indicatorsRef.current) {
+      if (s.category === 'behavior') continue
+      const key = `${s.category}|${s.type}`
+      if (!bySignatureKey.has(key)) bySignatureKey.set(key, [])
+      bySignatureKey.get(key)!.push(s)
+    }
+    const out: LongCandidate[] = []
+    for (const [key, signals] of bySignatureKey) {
+      if (signals.length >= 2) {
+        const [category, type] = key.split('|')
+        out.push({ category, type, signals })
+      }
+    }
+    return out
+  }
+
+  const CATEGORY_LABEL: Record<string, string> = { attendance: 'Attendance', courseFailure: 'Course Failure', behavior: 'Behavior' }
+
+  function describeCandidate(c: LongCandidate): string {
+    const cols = c.signals.map(s => columnMapping?.[s.column] ?? s.column)
+    return `${CATEGORY_LABEL[c.category] ?? c.category} (${cols.join(', ')})`
+  }
+
+  // Purpose-built setup step for the Longitudinal stage button — reuses
+  // BrainstormQCard's existing sequential-checklist UI (already built for
+  // exactly this shape: multi-select steps that flatten into one descriptive
+  // prompt) rather than a new bespoke wizard component.
+  function showLongitudinalWizard() {
+    const candidates = detectLongitudinalCandidates()
+    if (!candidates.length) {
+      // No genuine multi-time-point signal in this data — let Claude say so
+      // directly rather than showing a wizard with nothing real to select.
+      doSend(LONGITUDINAL_STAGE_PROMPT, '')
+      return
+    }
+    const variableOptions = candidates.map(describeCandidate)
+    const groupOptions = computeGroupOptions()
+    addMessage({
+      role: 'card',
+      type: 'brainstorm_q',
+      data: {
+        promptPrefix: 'Show me the longitudinal trend, using the SAME threshold definitions already set, for:',
+        submitLabel: 'Show trend →',
+        questions: [
+          { id: 'variables', label: 'Which variables would you like to track over time?', options: variableOptions },
+          ...(groupOptions.length
+            ? [{ id: 'groups', label: 'Which groups would you like to compare? Whole School is always included as the baseline.', options: [...groupOptions, 'Whole School only'] }]
+            : []),
+        ],
+      },
+      onSubmit: handleLongitudinalSubmit,
+    })
+  }
+
+  function handleLongitudinalSubmit(text: string) {
+    doSend(text, '')
   }
 
   function handleBrainstormSubmit(text: string) {
@@ -525,10 +1059,12 @@ export default function Page() {
 
   function handleRemoveFile() {
     fileIdRef.current = undefined
+    fileIdsRef.current = []
     setFileLabel(undefined)
     setThresholds(undefined)
     setCsvPreview(undefined)
     setColumnUniques(undefined)
+    columnUniquesRef.current = undefined
     setPhase('idle')
     setMessages([])
     apiMessages.current = []
@@ -615,9 +1151,10 @@ export default function Page() {
               onNewChat={() => { handleNewChat(); setMainView('chat') }}
             />
           ) : mainView === 'settings' ? (
-            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: 14 }}>
-              Settings coming soon
-            </div>
+            <SchoolContextSettings
+              session={session}
+              onRulesChanged={rules => { schoolContextRef.current = rules.filter(r => r.enabled).map(r => r.text).join('\n\n') }}
+            />
           ) : mainView === 'kb' || mainView === 'library-kb' ? (
             <AdminKB session={session} />
           ) : mainView === 'library-pending' ? (
@@ -635,11 +1172,47 @@ export default function Page() {
               <span className="tbar-title" style={{ marginLeft: 8 }}>
                 {activeConversationId ? 'Edvise' : 'Edvise'}
               </span>
+              {members.length > 1 && (
+                <div
+                  title={members.map(m => `${m.name}${m.role === 'owner' ? ' (owner)' : ''}`).join(', ')}
+                  style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 14 }}
+                >
+                  <div style={{ display: 'flex' }}>
+                    {members.slice(0, 4).map((m, i) => (
+                      <div
+                        key={m.userId}
+                        style={{
+                          width: 22, height: 22, borderRadius: '50%', background: 'var(--primary, #2A3B7C)',
+                          color: '#fff', fontSize: 10, fontWeight: 700, display: 'flex', alignItems: 'center',
+                          justifyContent: 'center', border: '2px solid var(--surface, #fff)', marginLeft: i === 0 ? 0 : -7,
+                        }}
+                      >
+                        {m.name[0]?.toUpperCase()}
+                      </div>
+                    ))}
+                  </div>
+                  <span style={{ fontSize: 11, color: '#3E94A5', fontWeight: 600, background: '#edf6f8', border: '1px solid #b8dde6', borderRadius: 10, padding: '2px 8px' }}>
+                    Shared · {members.length}
+                  </span>
+                </div>
+              )}
+              {conversationIdRef.current && (
+                <button
+                  className="tbar-btn"
+                  onClick={openShareModal}
+                  title="Share with your team"
+                  style={{ marginLeft: 'auto' }}
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16">
+                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                  </svg>
+                </button>
+              )}
               <button
                 className="tbar-btn"
                 onClick={() => setPanelOpen(o => !o)}
                 title="Notes & artifacts"
-                style={{ marginLeft: 'auto', position: 'relative' }}
+                style={{ marginLeft: conversationIdRef.current ? undefined : 'auto', position: 'relative' }}
               >
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16">
                   <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
@@ -663,6 +1236,14 @@ export default function Page() {
               onAddNote={addNote}
             />
 
+            {remoteTyping && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0 24px 8px', fontSize: 12, color: 'var(--text-muted)' }}>
+                <div className="ev-av" style={{ width: 18, height: 18, fontSize: 9 }}>Ev</div>
+                Edvise is answering {remoteTyping}&rsquo;s question…
+                <span className="typing" style={{ marginLeft: 2 }}><span /><span /><span /></span>
+              </div>
+            )}
+
             <MessageInput
               onSend={handleSend}
               onFileSelect={handleFileSelect}
@@ -671,6 +1252,8 @@ export default function Page() {
               onRemoveFile={fileLabel ? handleRemoveFile : undefined}
               thresholds={thresholds}
               onChangeCriteria={handleChangeCriteria}
+              indicators={indicatorsRef.current}
+              columnUniques={columnUniques}
               csvPreview={csvPreview}
               activeKB={activeKB}
               onToggleSource={k => setActiveKB(prev => prev.includes(k) ? prev.filter(x => x !== k) : [...prev, k])}
@@ -679,6 +1262,10 @@ export default function Page() {
               onPdfSelect={handlePdfSelect}
               onRemovePdf={handleRemovePdf}
               focusTrigger={inputFocusTrigger}
+              onGoogleSheetImport={handleGoogleSheetImport}
+              sheetImporting={sheetImporting}
+              isShared={members.length > 1}
+              onSendPlain={doSendPlain}
             />
           </>
         )}
@@ -699,7 +1286,61 @@ export default function Page() {
         onSave={handleSaveArtifact}
         onDiscard={handleDiscardArtifact}
         onOpenReportModal={(report, date, isNew) => setReportModal({ report, date, isNew })}
+        messages={messages}
+        showSharedAnalysis={members.length > 1}
       />
+
+      {/* Share modal */}
+      {shareModalOpen && (
+        <div
+          onClick={e => { if (e.target === e.currentTarget) setShareModalOpen(false) }}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
+        >
+          <div style={{ background: 'white', borderRadius: 14, width: '100%', maxWidth: 440, boxShadow: '0 24px 64px rgba(0,0,0,0.2)', padding: 24 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+              <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>Share with your team</span>
+              <button onClick={() => setShareModalOpen(false)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#9ca3af', fontSize: 18, lineHeight: 1, padding: 4 }}>×</button>
+            </div>
+            <p style={{ fontSize: 12.5, color: 'var(--text-muted)', marginBottom: 14, lineHeight: 1.5 }}>
+              Teammates you add can view this conversation's full history and continue chatting in it. This appears in their Team Workspace.
+            </p>
+
+            {members.length > 0 && (
+              <div style={{ marginBottom: 14 }}>
+                <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>Members</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  {members.map(m => (
+                    <div key={m.userId} style={{ fontSize: 13, color: 'var(--text)' }}>{m.name} <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>{m.role === 'owner' ? '(owner)' : ''}</span></div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <input
+              type="text"
+              value={shareEmailsInput}
+              onChange={e => setShareEmailsInput(e.target.value)}
+              placeholder="teacher@school.edu, another@school.edu"
+              style={{ width: '100%', padding: '9px 12px', border: '1.5px solid var(--border)', borderRadius: 8, fontFamily: 'inherit', fontSize: 13, color: 'var(--text)', outline: 'none', boxSizing: 'border-box' }}
+            />
+            {shareResult && (
+              <div style={{ fontSize: 12, marginTop: 8 }}>
+                {shareResult.added.length > 0 && <div style={{ color: '#2E705E' }}>Added: {shareResult.added.join(', ')}</div>}
+                {shareResult.notFound.length > 0 && <div style={{ color: '#c53030' }}>No Edvise account found for: {shareResult.notFound.join(', ')}</div>}
+              </div>
+            )}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 14 }}>
+              <button
+                onClick={handleShare}
+                disabled={sharing || !shareEmailsInput.trim()}
+                style={{ padding: '8px 18px', borderRadius: 8, border: 'none', background: 'var(--primary, #2A3B7C)', color: 'white', fontSize: 13, fontWeight: 600, cursor: 'pointer', opacity: sharing || !shareEmailsInput.trim() ? 0.6 : 1 }}
+              >
+                {sharing ? 'Sharing…' : 'Share'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Report modal */}
       {reportModal && (

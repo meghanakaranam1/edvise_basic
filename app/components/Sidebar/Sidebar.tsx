@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
-import { listConversations } from '../../lib/db'
+import { listConversations, listSharedConversations } from '../../lib/db'
 import type { Conversation } from '../../lib/db'
 import type { SupabaseSession } from '../../lib/supabase'
 
@@ -32,6 +32,7 @@ export default function Sidebar({
   notesCount?: number
 }) {
   const [conversations, setConversations] = useState<Conversation[]>([])
+  const [sharedConversations, setSharedConversations] = useState<Conversation[]>([])
   const [signingOut, setSigningOut] = useState(false)
 
   const userEmail = session?.user?.email ?? 'Teacher'
@@ -39,8 +40,9 @@ export default function Sidebar({
   const isAdmin = userEmail === process.env.NEXT_PUBLIC_ADMIN_EMAIL
 
   useEffect(() => {
-    if (!session?.user) { setConversations([]); return }
+    if (!session?.user) { setConversations([]); setSharedConversations([]); return }
     listConversations().then(setConversations).catch(() => setConversations([]))
+    listSharedConversations().then(setSharedConversations).catch(() => setSharedConversations([]))
   }, [session?.user?.id, refreshKey])
 
   async function handleSignOut() {
@@ -100,6 +102,29 @@ export default function Sidebar({
         {nav('actions-reports', mainView === 'actions-reports',
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" width="13" height="13"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>,
           'Reports', savedCounts.report || undefined)}
+
+        <div className="sb-label" style={{ marginTop: 8 }}>Team Workspace</div>
+        {sharedConversations.length === 0 ? (
+          <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', padding: '4px 8px' }}>No shared conversations yet</div>
+        ) : (
+          sharedConversations.slice(0, 5).map(c => (
+            <div
+              key={c.id}
+              className={`history-item${activeConversationId === c.id ? ' active' : ''}`}
+              onClick={() => onSelectConversation(c.id)}
+              role="button"
+              tabIndex={0}
+              onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') onSelectConversation(c.id) }}
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" width="13" height="13" style={{ flexShrink: 0 }}>
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+              </svg>
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {c.title || 'Untitled'}
+              </span>
+            </div>
+          ))
+        )}
 
         <div className="sb-label" style={{ marginTop: 16 }}>Recent</div>
         {conversations.length === 0 ? (

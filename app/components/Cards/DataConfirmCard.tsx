@@ -6,8 +6,20 @@ function titleCase(s: string) {
 }
 
 interface Props {
-  data: { columns: string[]; filename: string; rows: number; preview: Record<string, string>[]; suggestedLabels?: Record<string, string> }
-  onConfirm: (mapping: Record<string, string>) => void
+  data: {
+    columns: string[]
+    filename: string
+    rows: number
+    preview: Record<string, string>[]
+    suggestedLabels?: Record<string, string>
+    formulaRules?: string[]
+    // Which sheet each column came from, when this import combined multiple
+    // sheets (see presentImportedSheets in page.tsx) — used only to group the
+    // list below with a divider per sheet; sheets are never merged, so a
+    // column with no entry here is assumed to belong to the main sheet.
+    columnSources?: Record<string, string>
+  }
+  onConfirm: (mapping: Record<string, string>, formulaRulesText?: string) => void
 }
 
 export default function DataConfirmCard({ data, onConfirm }: Props) {
@@ -18,6 +30,8 @@ export default function DataConfirmCard({ data, onConfirm }: Props) {
     () => Object.fromEntries(data.columns.map((c) => [c, data.suggestedLabels?.[c] ?? titleCase(c)]))
   )
   const [confirmed, setConfirmed] = useState(false)
+  const [rulesText, setRulesText] = useState(() => (data.formulaRules ?? []).join('\n'))
+  const [saveRules, setSaveRules] = useState(true)
 
   function toggle(col: string) {
     setEnabled((prev) => ({ ...prev, [col]: !prev[col] }))
@@ -27,7 +41,8 @@ export default function DataConfirmCard({ data, onConfirm }: Props) {
     setConfirmed(true)
     const mapping: Record<string, string> = {}
     data.columns.filter((c) => enabled[c]).forEach((c) => { mapping[c] = labels[c] || c })
-    onConfirm(mapping)
+    const trimmedRules = rulesText.trim()
+    onConfirm(mapping, saveRules && trimmedRules ? trimmedRules : undefined)
   }
 
   if (confirmed) {
@@ -83,11 +98,29 @@ export default function DataConfirmCard({ data, onConfirm }: Props) {
           <span style={{ textAlign: 'center' }}>Include</span>
         </div>
 
-        {/* Scrollable column list */}
+        {/* Scrollable column list — grouped by source sheet when this import
+            combined multiple sheets (they're never merged, just listed
+            together here so every sheet's columns can be labeled/confirmed
+            in one place). */}
         <div style={{ overflowY: 'auto', flex: 1, padding: '4px 24px' }}>
-          {data.columns.map((col) => (
+          {(() => {
+            const hasGroups = !!data.columnSources && Object.keys(data.columnSources).length > 0
+            let lastGroup: string | null = null
+            return data.columns.map((col) => {
+              const group = hasGroups ? (data.columnSources?.[col] ?? data.filename) : null
+              const showHeader = hasGroups && group !== lastGroup
+              lastGroup = group
+              return (
+            <div key={col}>
+              {showHeader && (
+                <div style={{
+                  fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em',
+                  color: '#8a9bb8', padding: '10px 0 4px',
+                }}>
+                  {group}
+                </div>
+              )}
             <div
-              key={col}
               style={{
                 display: 'grid', gridTemplateColumns: '140px 1fr 52px',
                 alignItems: 'center', gap: 10, padding: '6px 0',
@@ -136,8 +169,32 @@ export default function DataConfirmCard({ data, onConfirm }: Props) {
                 </button>
               </div>
             </div>
-          ))}
+            </div>
+              )
+            })
+          })()}
         </div>
+
+        {/* Detected calculated-column rules */}
+        {(data.formulaRules?.length ?? 0) > 0 && (
+          <div style={{ padding: '12px 24px', borderTop: '1px solid var(--border)', flexShrink: 0 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, fontWeight: 600, color: '#2A3B7C', cursor: 'pointer' }}>
+              <input type="checkbox" checked={saveRules} onChange={(e) => setSaveRules(e.target.checked)} />
+              We noticed calculated columns in this sheet — save these rules to your School Context?
+            </label>
+            <textarea
+              value={rulesText}
+              onChange={(e) => setRulesText(e.target.value)}
+              disabled={!saveRules}
+              rows={Math.min(5, (data.formulaRules?.length ?? 1) + 1)}
+              style={{
+                width: '100%', marginTop: 8, padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 8,
+                fontFamily: 'inherit', fontSize: 12, color: 'var(--text)', outline: 'none', resize: 'vertical',
+                background: saveRules ? 'var(--surface)' : 'var(--bg)', boxSizing: 'border-box',
+              }}
+            />
+          </div>
+        )}
 
         {/* Footer */}
         <div style={{

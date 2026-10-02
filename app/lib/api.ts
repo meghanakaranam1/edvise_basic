@@ -1,3 +1,26 @@
+import type { ConversationMember } from './db'
+import type { IdentityColumns } from './columnClassifier'
+
+// Asks Claude to identify which column (if any) is a student ID, or which
+// pair of columns are Last/First name, for a single sheet — reused ahead of
+// merging so the sheet picker (and the merge itself) don't rely on a
+// hardcoded list of header spellings. Never throws: an API hiccup here should
+// degrade to sheetMerge's own regex fallback, not block the whole import.
+export async function fetchIdentityColumns(headers: string[], preview: Record<string, string>[]): Promise<IdentityColumns> {
+  try {
+    const res = await fetch('/api/suggest-columns', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ columns: headers, preview }),
+    })
+    if (!res.ok) return {}
+    const body = await res.json()
+    return body.identityColumns ?? {}
+  } catch {
+    return {}
+  }
+}
+
 export async function generateArtifact(
   type: 'action_plan' | 'agenda' | 'report',
   messages: { role: string; content: string }[],
@@ -21,12 +44,82 @@ export async function uploadFile(file: File): Promise<{ fileId: string }> {
   return res.json()
 }
 
+export async function getGoogleToken(accessToken: string, callbackUrl: string): Promise<{ token?: string; needsAuth?: boolean; authUrl?: string }> {
+  const res = await fetch('/api/google-sheets/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+    body: JSON.stringify({ callbackUrl }),
+  })
+  if (!res.ok) {
+    const body = await res.json().catch(() => null)
+    throw new Error(body?.error ?? res.statusText)
+  }
+  return res.json()
+}
+
+export async function importGoogleSheet(
+  spreadsheetId: string,
+  accessToken: string,
+  tabs?: { primaryTab: string; enrichTabs: string[] }
+): Promise<{ fileId: string; filename: string; csv: string; formulaRules?: string[]; warnings?: string[] }> {
+  const res = await fetch('/api/google-sheets/import', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+    body: JSON.stringify({ spreadsheetId, primaryTab: tabs?.primaryTab, enrichTabs: tabs?.enrichTabs }),
+  })
+  if (!res.ok) {
+    const body = await res.json().catch(() => null)
+    throw new Error(body?.error ?? res.statusText)
+  }
+  return res.json()
+}
+
+export async function getGoogleSheetTabs(
+  spreadsheetId: string,
+  accessToken: string
+): Promise<{ spreadsheetTitle: string; single: boolean; tabs: import('./sheetMerge').SheetSummary[] }> {
+  const res = await fetch('/api/google-sheets/tabs', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+    body: JSON.stringify({ spreadsheetId }),
+  })
+  if (!res.ok) {
+    const body = await res.json().catch(() => null)
+    throw new Error(body?.error ?? res.statusText)
+  }
+  return res.json()
+}
+
+export async function shareConversation(conversationId: string, emails: string[], accessToken: string): Promise<{ added: string[]; notFound: string[] }> {
+  const res = await fetch(`/api/conversations/${conversationId}/share`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+    body: JSON.stringify({ emails }),
+  })
+  if (!res.ok) {
+    const body = await res.json().catch(() => null)
+    throw new Error(body?.error ?? res.statusText)
+  }
+  return res.json()
+}
+
+export async function getConversationMembers(conversationId: string, accessToken: string): Promise<ConversationMember[]> {
+  const res = await fetch(`/api/conversations/${conversationId}/members`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+  if (!res.ok) return []
+  const body = await res.json()
+  return body.members ?? []
+}
+
 export async function streamChat({
   messages,
   fileId,
+  fileIds,
   pdfFiles,
   thresholdPrompt,
   columnMapping,
+  schoolContext,
   kbScope,
   onChunk,
   onImage,
@@ -38,22 +131,24 @@ export async function streamChat({
 }: {
   messages: { role: 'user' | 'assistant'; content: string | unknown[] }[]
   fileId?: string
+  fileIds?: { fileId: string; filename: string }[]
   pdfFiles?: { name: string; fileId: string }[]
   thresholdPrompt?: string
   columnMapping?: Record<string, string>
+  schoolContext?: string
   kbScope?: string
   onChunk: (text: string) => void
   onImage: (data: string, mediaType: string) => void
   onCsv: (filename: string, data: string) => void
   onTableCsv: (filename: string, csv: string) => void
-  onSources?: (sources: Array<{ title: string; kind: 'kb' | 'web'; url?: string }>) => void
+  onSources?: (sources: Array<{ title: string; kind: 'kb' | 'web'; url?: string; kbDocId?: string }>) => void
   onAskChoices?: (toolCallId: string, question: string, choices: string[], allowMultiple: boolean) => void
   onUpdatePlan?: (artifactType: 'action_plan' | 'agenda') => void
 }): Promise<void> {
   const res = await fetch('/api/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ messages, fileId, pdfFiles, thresholdPrompt, columnMapping, kbScope }),
+    body: JSON.stringify({ messages, fileId, fileIds, pdfFiles, thresholdPrompt, columnMapping, schoolContext, kbScope }),
   })
   if (!res.ok) throw new Error(await res.text())
 
@@ -75,7 +170,7 @@ export async function streamChat({
         if (e.type === 'image') onImage(e.data as string, (e.mediaType as string) ?? 'image/png')
         if (e.type === 'csv') onCsv(e.filename as string, e.data as string)
         if (e.type === 'table_csv') onTableCsv(e.filename as string, e.csv as string)
-        if (e.type === 'sources' && onSources) onSources(e.sources as Array<{ title: string; kind: 'kb' | 'web'; url?: string }>)
+        if (e.type === 'sources' && onSources) onSources(e.sources as Array<{ title: string; kind: 'kb' | 'web'; url?: string; kbDocId?: string }>)
         if (e.type === 'ask_choices' && onAskChoices) onAskChoices(e.toolCallId as string, e.question as string, e.choices as string[], (e.allowMultiple as boolean) ?? false)
         if (e.type === 'update_plan' && onUpdatePlan) onUpdatePlan(e.artifactType as 'action_plan' | 'agenda')
       } catch { /* skip malformed lines */ }

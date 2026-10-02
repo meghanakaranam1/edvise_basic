@@ -68,6 +68,25 @@ export default function ActionPlanTab({
     )
   }
 
+  function downloadPlan() {
+    if (!plan) return
+    const steps = (plan.steps ?? []).map((s, i) =>
+      `${i + 1}. ${s.title}\n${s.bullets.map(b => `   • ${b}`).join('\n')}`
+    ).join('\n\n')
+    const text = [
+      plan.title,
+      '',
+      plan.summary,
+      plan.goal ? `\nGoal: ${plan.goal}` : '',
+      '\nINTERVENTION STEPS\n',
+      steps,
+      plan.notes ? `\nNotes:\n${plan.notes}` : '',
+    ].filter(Boolean).join('\n')
+    const url = URL.createObjectURL(new Blob([text], { type: 'text/plain' }))
+    Object.assign(document.createElement('a'), { href: url, download: `${plan.title || 'action-plan'}.txt` }).click()
+    URL.revokeObjectURL(url)
+  }
+
   function setField<K extends keyof ActionPlan>(key: K, value: ActionPlan[K]) {
     setPlan(p => p ? { ...p, [key]: value } : p)
   }
@@ -126,12 +145,20 @@ export default function ActionPlanTab({
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <span style={{ fontSize: 11, color: '#9ca3af' }}>Auto-filled · edit freely</span>
-          <button
-            onClick={() => setEditing(e => !e)}
-            style={{ padding: '3px 10px', border: '1px solid #e4e9f2', borderRadius: 6, background: editing ? '#edf6f8' : 'white', color: editing ? '#1b6070' : '#7a89b8', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
-          >
-            {editing ? 'Done' : 'Edit'}
-          </button>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button
+              onClick={downloadPlan}
+              style={{ padding: '3px 10px', border: '1px solid #e4e9f2', borderRadius: 6, background: 'white', color: '#7a89b8', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
+            >
+              ↓ Download
+            </button>
+            <button
+              onClick={() => setEditing(e => !e)}
+              style={{ padding: '3px 10px', border: '1px solid #e4e9f2', borderRadius: 6, background: editing ? '#edf6f8' : 'white', color: editing ? '#1b6070' : '#7a89b8', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
+            >
+              {editing ? 'Done' : 'Edit'}
+            </button>
+          </div>
         </div>
       </div>
 

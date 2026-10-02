@@ -4,6 +4,8 @@ import NotesTab from './NotesTab'
 import ActionPlanTab from './ActionPlanTab'
 import AgendaTab from './AgendaTab'
 import ReportTab from './ReportTab'
+import SharedAnalysisTab from './SharedAnalysisTab'
+import type { Message } from '../MessageList'
 import type { Note, ArtifactType, Artifacts } from './types'
 
 const TABS: { id: string; label: string }[] = [
@@ -42,6 +44,8 @@ export default function RightPanel({
   onSave,
   onDiscard,
   onOpenReportModal,
+  messages,
+  showSharedAnalysis,
 }: {
   open: boolean
   expanded: boolean
@@ -57,7 +61,10 @@ export default function RightPanel({
   onSave: (type: ArtifactType) => void
   onDiscard: (type: ArtifactType) => void
   onOpenReportModal: (report: import('./types').Report, date: string, isNew: boolean) => void
+  messages?: Message[]
+  showSharedAnalysis?: boolean
 }) {
+  const tabs = showSharedAnalysis ? [...TABS, { id: 'shared_analysis', label: 'Shared Analysis' }] : TABS
   const [picking, setPicking] = useState<ArtifactType | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [reportTemplate, setReportTemplate] = useState<ReportTemplate>('full_analysis')
@@ -88,7 +95,7 @@ export default function RightPanel({
     <aside className={`right-panel${open ? ' open' : ''}${expanded ? ' expanded' : ''}`}>
       {/* Tab row */}
       <div className="rp-tabs">
-        {TABS.map(t => (
+        {tabs.map(t => (
           <button
             key={t.id}
             className={`rp-tab${tab === t.id ? ' active' : ''}`}
@@ -284,6 +291,9 @@ export default function RightPanel({
                 onDiscard={() => onDiscard('report')}
                 onOpenModal={onOpenReportModal}
               />
+            )}
+            {tab === 'shared_analysis' && (
+              <SharedAnalysisTab messages={messages ?? []} />
             )}
           </>
         )}

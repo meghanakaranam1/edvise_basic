@@ -47,6 +47,23 @@ export default function AgendaTab({
     )
   }
 
+  function downloadAgenda() {
+    if (!agenda) return
+    const items = (agenda.items ?? []).map(item =>
+      `${item.time} (${item.duration_min}m) — ${item.title}\n  ${item.detail ?? ''}\n  Lead: ${item.lead ?? ''}`
+    ).join('\n\n')
+    const text = [
+      agenda.title,
+      [agenda.date_suggestion, agenda.location].filter(Boolean).join(' · '),
+      agenda.purpose ? `\nPurpose: ${agenda.purpose}` : '',
+      '\nAGENDA ITEMS\n',
+      items,
+    ].filter(Boolean).join('\n')
+    const url = URL.createObjectURL(new Blob([text], { type: 'text/plain' }))
+    Object.assign(document.createElement('a'), { href: url, download: `${agenda.title || 'agenda'}.txt` }).click()
+    URL.revokeObjectURL(url)
+  }
+
   function field(key: keyof Agenda, value: string | number) {
     setAgenda(p => p ? { ...p, [key]: value } : p)
   }
@@ -67,7 +84,10 @@ export default function AgendaTab({
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6, marginBottom: 8 }}>
+        <button onClick={downloadAgenda} style={{ padding: '4px 10px', border: '1px solid #e4e9f2', borderRadius: 7, background: 'white', color: '#7a89b8', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+          ↓ Download
+        </button>
         <button onClick={() => setEditing(e => !e)} style={{ padding: '4px 10px', border: '1px solid #e4e9f2', borderRadius: 7, background: editing ? '#edf6f8' : 'white', color: editing ? '#1b6070' : '#7a89b8', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
           {editing ? 'Done' : 'Edit'}
         </button>

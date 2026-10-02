@@ -3,6 +3,8 @@ import { useEffect, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import DataConfirmCard from './Cards/DataConfirmCard'
+import SheetPickerCard from './Cards/SheetPickerCard'
+import type { SheetSummary } from '../lib/sheetMerge'
 import CriteriaSettingCard, { type Thresholds } from './Cards/CriteriaSettingCard'
 import RiskOverviewCard, { type RiskOverviewData } from './Cards/RiskOverviewCard'
 import GradeComparisonCard, { type GradeComparisonData } from './Cards/GradeComparisonCard'
@@ -11,20 +13,29 @@ import StudentTableCard, { type StudentTableData } from './Cards/StudentTableCar
 import SELCard, { type SELData } from './Cards/SELCard'
 import ChartCard, { type ChartData } from './Cards/ChartCard'
 import BrainstormQCard, { type BrainstormQData } from './Cards/BrainstormQCard'
+import LongitudinalCard, { type LongitudinalData } from './Cards/LongitudinalCard'
 
 export type Message =
-  | { role: 'user'; content: string; id?: string }
-  | { role: 'assistant'; content: string; images?: string[]; csvs?: { filename: string; data: string }[]; tableCsvs?: { filename: string; csv: string }[]; sources?: Array<{ title: string; kind: 'kb' | 'web' | 'pdf'; url?: string }>; id?: string }
+  | { role: 'user'; content: string; id?: string; senderName?: string }
+  | { role: 'assistant'; content: string; images?: string[]; csvs?: { filename: string; data: string }[]; tableCsvs?: { filename: string; csv: string }[]; sources?: Array<{ title: string; kind: 'kb' | 'web' | 'pdf'; url?: string; kbDocId?: string }>; id?: string }
   | { role: 'assistant'; isLoading: true; id?: string }
-  | { role: 'card'; type: 'data_confirm'; data: Parameters<typeof DataConfirmCard>[0]['data']; onConfirm: (mapping: Record<string, string>) => void; id?: string }
+  | { role: 'card'; type: 'data_confirm'; data: Parameters<typeof DataConfirmCard>[0]['data']; onConfirm: Parameters<typeof DataConfirmCard>[0]['onConfirm']; id?: string }
+  | { role: 'card'; type: 'sheet_picker'; filename: string; sheets: SheetSummary[]; onConfirm: (idxs: number[]) => void; id?: string }
   | { role: 'card'; type: 'criteria'; columnMapping?: Record<string, string>; columnUniques?: Record<string, string[]>; indicators?: import('../api/suggest-columns/route').Indicators; onConfirm: (t: Thresholds) => void; id?: string }
   | { role: 'card'; type: 'brainstorm_q'; data: BrainstormQData; onSubmit: (text: string) => void; id?: string }
+
+const AVATAR_PALETTE = ['#E8A928', '#1B3A6B', '#3E94A5', '#7c3aed', '#B45309', '#2E705E']
+function avatarColor(name: string): string {
+  let hash = 0
+  for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) | 0
+  return AVATAR_PALETTE[Math.abs(hash) % AVATAR_PALETTE.length]
+}
 
 const MODES = [
   {
     key: 'questions',
     title: 'I have my own questions',
-    desc: 'Ask anything — upload a CSV, a PDF, or just start a conversation',
+    desc: 'Ask anything — upload a CSV/Excel file, a PDF, or just start a conversation',
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="22" height="22">
         <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
@@ -65,6 +76,7 @@ const MODES = [
 type TextPart = { type: 'text'; content: string }
 type CardPart = { type: 'card'; cardType: string; data: unknown }
 type Part = TextPart | CardPart
+export type { Part }
 
 function parseTableCsv(raw: string): { columns: string[]; rows: string[][] } {
   const lines = raw.trim().split('\n')
@@ -104,14 +116,27 @@ function parseSuggestions(text: string): { text: string; questions: Suggestion[]
   return { text: clean, questions }
 }
 
+// Exported so page.tsx can special-case this exact click (same pattern as
+// "Brainstorm interventions") to show the variables/groups setup wizard
+// instead of sending it straight through — see handleSuggestionClick.
+export const LONGITUDINAL_STAGE_PROMPT = 'Show me the longitudinal trend across quarters for whichever criteria have more than one time point.'
+
 // Stage action buttons — computed from conversation history, not from model output
-const STAGE_ORDER = ['risk_overview', 'grade_comparison', 'subgroup', 'sel_overview'] as const
+const STAGE_ORDER = ['risk_overview', 'grade_comparison', 'subgroup', 'sel_overview', 'longitudinal_overview'] as const
 type StageType = typeof STAGE_ORDER[number]
 
 const STAGE_ACTIONS: Record<string, { label: string; prompt: string; needsKB: boolean }> = {
   grade_comparison: { label: 'Grade breakdown',  prompt: 'Grade breakdown',   needsKB: false },
   subgroup:         { label: 'Subgroup analysis', prompt: 'Subgroup analysis', needsKB: false },
   sel_overview:     { label: 'SEL overview',      prompt: 'SEL overview',      needsKB: false },
+  // A separate, directly-clickable button rather than something nested behind
+  // a "what do you want to do" gate after criteria — matches the "it doesn't
+  // have to be an analysis" / "just another tab, they can do anything
+  // anytime" framing from the design walkthrough. Only appears at all when
+  // the criteria actually contain a multi-quarter signal (see the system
+  // prompt) — Claude omits the card (and this button becomes a no-op message)
+  // if there's genuinely nothing longitudinal in the data.
+  longitudinal_overview: { label: 'Longitudinal analysis', prompt: LONGITUDINAL_STAGE_PROMPT, needsKB: false },
 }
 const BRAINSTORM_ACTION = {
   label: 'Brainstorm interventions',
@@ -158,8 +183,8 @@ function parseSourceSections(text: string): { kb: string | null; web: string | n
 // Legacy SourceTabs — only used when model writes <!--KB_START--> / <!--WEB_START--> markers
 function SourceTabs({ kb, web, kbSources, webSources }: {
   kb: string; web: string
-  kbSources: Array<{ title: string; kind: 'kb' | 'web' | 'pdf'; url?: string }>
-  webSources: Array<{ title: string; kind: 'kb' | 'web' | 'pdf'; url?: string }>
+  kbSources: Array<{ title: string; kind: 'kb' | 'web' | 'pdf'; url?: string; kbDocId?: string }>
+  webSources: Array<{ title: string; kind: 'kb' | 'web' | 'pdf'; url?: string; kbDocId?: string }>
 }) {
   const [active, setActive] = useState<'kb' | 'web'>('kb')
   const content = active === 'kb' ? kb : web
@@ -193,6 +218,14 @@ function SourceTabs({ kb, web, kbSources, webSources }: {
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="10" height="10"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
                   {s.title}
                 </a>
+              ) : s.kbDocId ? (
+                <a key={i} href={`/api/kb/download?id=${s.kbDocId}`} download
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, padding: '2px 8px', borderRadius: 12, background: '#eef0f8', border: '1px solid #c5cce0', color: '#1B3A6B', textDecoration: 'none', fontWeight: 500 }}>
+                  <sup style={{ fontSize: 9, fontWeight: 700, marginRight: 1 }}>{i + 1}</sup>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="10" height="10"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                  {s.title}
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="9" height="9" style={{ opacity: 0.5 }}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                </a>
               ) : (
                 <span key={i}
                   style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, padding: '2px 8px', borderRadius: 12, background: '#eef0f8', border: '1px solid #c5cce0', color: '#1B3A6B', fontWeight: 500 }}>
@@ -211,14 +244,17 @@ function SourceTabs({ kb, web, kbSources, webSources }: {
 
 // Sources section with tabs when both KB and web are present.
 // Numbers are global (KB [1]–[N], then web [N+1]–[M]) so inline [N] citations in text align.
-function SourcesSection({ sources }: {
-  sources: Array<{ title: string; kind: 'kb' | 'web' | 'pdf'; url?: string }>
+function SourcesSection({ sources, text }: {
+  sources: Array<{ title: string; kind: 'kb' | 'web' | 'pdf'; url?: string; kbDocId?: string }>
+  text: string
 }) {
   const [activeTab, setActiveTab] = useState<'kb' | 'web'>('kb')
 
+  // Retrieval doesn't imply usage — the model is told not to cite KB/web docs for
+  // pure data-analysis answers, so only show sources it actually cited inline.
   const indexed = sources
     .map((s, i) => ({ s, num: i + 1 }))
-    .filter(({ s }) => s.kind !== 'pdf')
+    .filter(({ s, num }) => s.kind !== 'pdf' && text.includes(`[${num}]`))
 
   const kbItems = indexed.filter(({ s }) => s.kind === 'kb')
   const webItems = indexed.filter(({ s }) => s.kind === 'web')
@@ -226,8 +262,9 @@ function SourcesSection({ sources }: {
 
   if (!indexed.length) return null
 
-  function Chip({ s, num }: { s: { title: string; kind: 'kb' | 'web' | 'pdf'; url?: string }; num: number }) {
+  function Chip({ s, num }: { s: { title: string; kind: 'kb' | 'web' | 'pdf'; url?: string; kbDocId?: string }; num: number }) {
     const isWeb = s.kind === 'web' && s.url
+    const isKbDownloadable = s.kind === 'kb' && s.kbDocId
     const base: React.CSSProperties = {
       display: 'inline-flex', alignItems: 'center', gap: 4,
       fontSize: 11, padding: '3px 9px', borderRadius: 12, fontWeight: 500,
@@ -248,6 +285,17 @@ function SourcesSection({ sources }: {
           {citeBadge}
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="10" height="10"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
           {s.title}
+        </a>
+      )
+    }
+    if (isKbDownloadable) {
+      return (
+        <a href={`/api/kb/download?id=${s.kbDocId}`} download
+          style={{ ...base, background: '#eef0f8', border: '1px solid #c5cce0', color: '#1B3A6B', textDecoration: 'none' }}>
+          {citeBadge}
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="10" height="10"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          {s.title}
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="9" height="9" style={{ opacity: 0.5 }}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
         </a>
       )
     }
@@ -306,7 +354,7 @@ function SourcesSection({ sources }: {
   )
 }
 
-function parseCardParts(content: string): Part[] {
+export function parseCardParts(content: string): Part[] {
   // Strip stray CSV_EXPORT / TABLE_CSV markers echoed into text (data is already captured from stdout)
   content = content.replace(/CSV_EXPORT:[^\n]*\n[A-Za-z0-9+/=\n]*/g, '').replace(/CSV_EXPORT:[^\n]*/g, '')
   content = content.replace(/TABLE_CSV:[^\n]+(\n[^\n]+)*/g, '')
@@ -337,7 +385,7 @@ function parseCardParts(content: string): Part[] {
   return parts
 }
 
-function renderCard(cardType: string, data: unknown, key: string | number) {
+export function renderCard(cardType: string, data: unknown, key: string | number) {
   if (cardType === 'risk_overview') {
     return <RiskOverviewCard key={key} data={data as RiskOverviewData} />
   }
@@ -346,6 +394,9 @@ function renderCard(cardType: string, data: unknown, key: string | number) {
   }
   if (cardType === 'subgroup') {
     return <SubgroupCard key={key} data={data as SubgroupData} />
+  }
+  if (cardType === 'longitudinal_overview') {
+    return <LongitudinalCard key={key} data={data as LongitudinalData} />
   }
   if (cardType === 'student_table') {
     return <StudentTableCard key={key} data={data as StudentTableData} />
@@ -429,6 +480,21 @@ export default function MessageList({
     <div className="thread" ref={threadRef} onScroll={onThreadScroll}>
       {messages.map((msg, i) => {
         if (msg.role === 'user') {
+          if (msg.senderName) {
+            return (
+              <div key={msg.id ?? i} className="msg-wrap assistant">
+                <div className="assistant-row">
+                  <div className="teammate-av" style={{ background: avatarColor(msg.senderName) }}>
+                    {msg.senderName[0]?.toUpperCase()}
+                  </div>
+                  <div style={{ minWidth: 0 }}>
+                    <div className="teammate-name">{msg.senderName}</div>
+                    <div className="teammate-bubble">{msg.content}</div>
+                  </div>
+                </div>
+              </div>
+            )
+          }
           return (
             <div key={msg.id ?? i} className="msg-wrap user">
               <div className="user-bubble">{msg.content}</div>
@@ -444,6 +510,9 @@ export default function MessageList({
                 <div className="assistant-body">
                   {msg.type === 'data_confirm' && (
                     <DataConfirmCard data={msg.data} onConfirm={msg.onConfirm} />
+                  )}
+                  {msg.type === 'sheet_picker' && (
+                    <SheetPickerCard filename={msg.filename} sheets={msg.sheets} onConfirm={msg.onConfirm} />
                   )}
                   {msg.type === 'criteria' && (
                     <CriteriaSettingCard columnMapping={msg.columnMapping} columnUniques={msg.columnUniques} indicators={msg.indicators} onConfirm={msg.onConfirm} />
@@ -558,7 +627,7 @@ export default function MessageList({
                     </button>
                   )}
                   {!hasTabs && msg.sources && msg.sources.length > 0 && !(isLast && isStreaming) && (
-                    <SourcesSection sources={msg.sources} />
+                    <SourcesSection sources={msg.sources} text={restContent} />
                   )}
                   {(stageActions.length > 0 || questions.length > 0) && (
                     <div className="suggestions">

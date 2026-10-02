@@ -1,15 +1,22 @@
 'use client'
 import { useState } from 'react'
-import type { Indicators } from '../../api/suggest-columns/route'
+import type { Indicators, Signal, IndicatorCategory } from '../../api/suggest-columns/route'
 
-export interface Thresholds {
-  absencePct?: number       // rate-based: missed ≥X% of days
-  absenceDays?: number      // count-based: ≥X days absent
-  suspensionMin?: number
-  failingGrade?: number     // numeric grade: below X
-  failingGradeLetter?: string  // letter grade: 'D' or 'F'
-  failingCount?: number     // count-based: ≥X failed courses
+// One threshold per signal (see Signal in columnClassifier.ts) — a category
+// can have more than one signal (e.g. behavior from both a tardy log and a
+// separate suspension log), each configured independently and combined with
+// OR: tripping any one signal's threshold flags the whole category.
+export interface SignalThreshold {
+  category: IndicatorCategory
+  column: string
+  sourceFile?: string
+  pct?: number        // rate/days: missed >= X% of days
+  min?: number         // count, or category: >= N matching rows
+  values?: string[]    // category: which raw values count as a hit
+  grade?: number       // grade-numeric: below X
+  gradeLetter?: string // grade-letter: 'D' or 'F'
 }
+export type Thresholds = SignalThreshold[]
 
 interface Props {
   columnMapping?: Record<string, string>
@@ -18,61 +25,237 @@ interface Props {
   onConfirm: (t: Thresholds) => void
 }
 
+export const CATEGORY_META: Record<IndicatorCategory, { label: string; dot: string }> = {
+  attendance: { label: 'Attendance', dot: '#3E94A5' },
+  behavior: { label: 'Behavior', dot: '#B45309' },
+  courseFailure: { label: 'Course failure', dot: '#c53030' },
+}
+
+export function signalKey(s: { column: string; sourceFile?: string }): string {
+  return `${s.sourceFile ?? ''}::${s.column}`
+}
+
+export function groupByCategory(indicators: Indicators): Record<IndicatorCategory, Signal[]> {
+  const groups: Record<IndicatorCategory, Signal[]> = { attendance: [], behavior: [], courseFailure: [] }
+  for (const s of indicators) groups[s.category].push(s)
+  return groups
+}
+
+export function defaultThreshold(s: Signal): SignalThreshold {
+  const base = { category: s.category, column: s.column, sourceFile: s.sourceFile }
+  if (s.type === 'rate' || s.type === 'days') return { ...base, pct: 10 }
+  if (s.type === 'count') return { ...base, min: 1 }
+  if (s.type === 'category') return { ...base, values: s.values, min: 1 }
+  if (s.type === 'grade-numeric') return { ...base, grade: 60 }
+  return { ...base, gradeLetter: 'D' } // grade-letter
+}
+
+export function initThresholds(indicators?: Indicators): Thresholds {
+  return (indicators ?? []).map(defaultThreshold)
+}
+
 export function describeThresholds(t: Thresholds): string {
+  const byCategory = { attendance: [] as SignalThreshold[], behavior: [] as SignalThreshold[], courseFailure: [] as SignalThreshold[] }
+  for (const s of t) byCategory[s.category].push(s)
+  const describeOne = (s: SignalThreshold) => {
+    if (s.values?.length) return `${s.values.join('/')} ≥${s.min ?? 1}`
+    if (s.min != null) return `≥${s.min}`
+    if (s.pct != null) return `≥${s.pct}%`
+    if (s.grade != null) return `below ${s.grade}`
+    if (s.gradeLetter != null) return `${s.gradeLetter} or below`
+    return ''
+  }
   const parts: string[] = []
-  if (t.absencePct != null) parts.push(`absent ≥${t.absencePct}% of days`)
-  if (t.absenceDays != null) parts.push(`absent ≥${t.absenceDays} days`)
-  if (t.suspensionMin != null) parts.push(`suspensions ≥${t.suspensionMin}`)
-  if (t.failingGrade != null) parts.push(`grade below ${t.failingGrade}`)
-  if (t.failingGradeLetter != null) parts.push(`grade ${t.failingGradeLetter} or below`)
-  if (t.failingCount != null) parts.push(`≥${t.failingCount} failed course${t.failingCount > 1 ? 's' : ''}`)
+  for (const cat of ['attendance', 'behavior', 'courseFailure'] as const) {
+    const sigs = byCategory[cat]
+    if (!sigs.length) continue
+    parts.push(`${CATEGORY_META[cat].label.toLowerCase()}: ${sigs.map(describeOne).join(' or ')}`)
+  }
   return parts.join(' · ')
 }
 
+// Builds the instructions Claude uses to apply thresholds consistently. Each
+// category's flag is true if ANY of its signals trip — this is spelled out
+// explicitly since risk tiers below are counted per CATEGORY (max 3), not per
+// signal, and a category with two signals must not silently count as two.
 export function thresholdPrompt(t: Thresholds, ind?: Indicators): string {
-  const col = (key: string) => ind ? ` (column: \`${key}\`)` : ''
-  const absCol = ind?.absence?.column ?? ''
-  const susCol = ind?.suspension?.column ?? ''
-  const failCol = ind?.academicFailure?.column ?? ''
+  const byCategory = { attendance: [] as SignalThreshold[], behavior: [] as SignalThreshold[], courseFailure: [] as SignalThreshold[] }
+  for (const s of t) byCategory[s.category].push(s)
+  const indByKey = new Map((ind ?? []).map(s => [signalKey(s), s]))
 
-  const flags: string[] = []
-  if (t.absencePct != null) {
-    if (ind?.absence?.type === 'rate') {
-      flags.push(`Chronic absence flag${col(absCol)}: attendance rate stored as decimal 0–1. Flag where \`${absCol || 'attendance_rate'}\` < ${(100 - t.absencePct) / 100} (i.e. missed ≥${t.absencePct}% of days).`)
-    } else if (ind?.absence?.type === 'days') {
-      flags.push(`Chronic absence flag${col(absCol)}: flag where \`${absCol || 'days_absent'}\` ≥ ${Math.round(t.absencePct / 100 * 180)} days.`)
+  const describeSignal = (s: SignalThreshold): string => {
+    const sig = indByKey.get(signalKey(s))
+    const file = s.sourceFile ? ` in \`${s.sourceFile}\`` : ''
+    const colRef = `\`${s.column}\`${file}`
+    if (sig?.type === 'category' && s.values?.length) {
+      return `count rows per student where ${colRef} is exactly one of: ${s.values.map(v => `"${v}"`).join(', ')} (match the string exactly — do not treat any other value as a hit). Flag where that count ≥ ${s.min ?? 1}.${s.sourceFile ? ` This file may use a different student-identifying column than the main roster — find the shared key yourself (ID, or Last+First name) rather than assuming it matches by name.` : ''}`
+    }
+    if (sig?.type === 'rate') return `attendance rate in ${colRef} — this can be stored as either a decimal (0–1) or a percentage (0–100), so check the actual values first. Flag where it is below ${(100 - (s.pct ?? 10)) / 100} if stored as a decimal, or below ${100 - (s.pct ?? 10)} if stored as a percentage (both mean the same thing: missed ≥${s.pct ?? 10}% of days).`
+    if (sig?.type === 'days') return `flag where ${colRef} ≥ ${Math.round((s.pct ?? 10) / 100 * 180)} days (${s.pct ?? 10}% of a ~180-day school year — not a flat day count, so it means the same thing regardless of school year length).`
+    if (sig?.type === 'count') return `flag where ${colRef} ≥ ${s.min ?? 1}`
+    if (sig?.type === 'grade-numeric') return `flag where ${colRef} < ${s.grade ?? 60}`
+    if (sig?.type === 'grade-letter') return `flag where ${colRef} is ${s.gradeLetter === 'D' ? '"D" or "F"' : '"F"'}`
+    return `flag where ${colRef} meets the configured threshold`
+  }
+
+  const blocks: string[] = []
+  for (const cat of ['attendance', 'behavior', 'courseFailure'] as const) {
+    const sigs = byCategory[cat]
+    if (!sigs.length) continue
+    const label = CATEGORY_META[cat].label
+    if (sigs.length === 1) {
+      blocks.push(`${label} flag: ${describeSignal(sigs[0])}`)
     } else {
-      flags.push(`Chronic absence flag: student missed ≥${t.absencePct}% of days. Check whether the column stores a decimal (0–1) or percentage (0–100) and compare accordingly.`)
+      blocks.push(`${label} flag (TRUE if ANY of the following are true — these are independent signals, not all required):\n` + sigs.map((s, i) => `  ${i + 1}. ${describeSignal(s)}`).join('\n'))
     }
   }
-  if (t.absenceDays != null)
-    flags.push(`Chronic absence flag${col(absCol)}: flag where \`${absCol || 'days_absent'}\` ≥ ${t.absenceDays}`)
-  if (t.suspensionMin != null)
-    flags.push(`Suspension flag${col(susCol)}: flag where \`${susCol || 'suspensions'}\` ≥ ${t.suspensionMin}`)
-  if (t.failingGrade != null)
-    flags.push(`Academic failure flag${col(failCol)}: flag where \`${failCol || 'grade'}\` < ${t.failingGrade}`)
-  if (t.failingGradeLetter != null)
-    flags.push(`Academic failure flag${col(failCol)}: flag where \`${failCol || 'grade'}\` is ${t.failingGradeLetter === 'D' ? '"D" or "F"' : '"F"'}`)
-  if (t.failingCount != null)
-    flags.push(`Academic failure flag${col(failCol)}: flag where \`${failCol || 'failures'}\` ≥ ${t.failingCount}`)
-  return flags.join('\n')
+  return blocks.join('\n')
 }
 
-export default function CriteriaSettingCard({ indicators, onConfirm }: Props) {
-  const absence = indicators?.absence
-  const suspension = indicators?.suspension
-  const failure = indicators?.academicFailure
+function SignalRow({
+  signal, threshold, columnUniques, onChange, onToggleValue,
+}: {
+  signal: Signal
+  threshold: SignalThreshold
+  columnUniques?: Record<string, string[]>
+  onChange: (patch: Partial<SignalThreshold>) => void
+  onToggleValue: (v: string) => void
+}) {
+  const sel: React.CSSProperties = { border: '1px solid #d4dff7', borderRadius: 8, padding: '6px 10px', fontSize: 12, color: '#2A3B7C', background: '#fff', minWidth: 180 }
+  const rowSt: React.CSSProperties = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }
 
-  const [t, setT] = useState<Thresholds>(() => {
-    const init: Thresholds = {}
-    if (absence?.type === 'rate') init.absencePct = 10
-    else if (absence?.type === 'days') init.absenceDays = 10
-    if (suspension) init.suspensionMin = 1
-    if (failure?.type === 'grade-numeric') init.failingGrade = 60
-    else if (failure?.type === 'grade-letter') init.failingGradeLetter = 'D'
-    else if (failure?.type === 'count') init.failingCount = 1
-    return init
-  })
+  if (signal.type === 'rate' || signal.type === 'days') {
+    return (
+      <div style={rowSt}>
+        <span style={{ fontSize: 12, color: '#2A3B7C' }}>{signal.column} — missed</span>
+        <select style={sel} value={threshold.pct} onChange={e => onChange({ pct: Number(e.target.value) })}>
+          {[5, 10, 15, 20].map(v => <option key={v} value={v}>≥{v}% days</option>)}
+        </select>
+      </div>
+    )
+  }
+  if (signal.type === 'count') {
+    return (
+      <div style={rowSt}>
+        <span style={{ fontSize: 12, color: '#2A3B7C' }}>{signal.column}</span>
+        <select style={sel} value={threshold.min} onChange={e => onChange({ min: Number(e.target.value) })}>
+          {[1, 2, 3].map(v => <option key={v} value={v}>≥{v}</option>)}
+        </select>
+      </div>
+    )
+  }
+  if (signal.type === 'category') {
+    const options = columnUniques?.[signal.column] ?? signal.values ?? []
+    return (
+      <div>
+        <div style={{ fontSize: 11, color: '#8a9bb8', marginBottom: 4 }}>{signal.column} — which values count?</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 6 }}>
+          {options.map(v => (
+            <label key={v} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12, color: '#2A3B7C', cursor: 'pointer' }}>
+              <input type="checkbox" checked={threshold.values?.includes(v) ?? false} onChange={() => onToggleValue(v)} />
+              {v}
+            </label>
+          ))}
+        </div>
+        <div style={{ ...rowSt }}>
+          <span style={{ fontSize: 12, color: '#2A3B7C' }}>Flag with</span>
+          <select style={sel} value={threshold.min} onChange={e => onChange({ min: Number(e.target.value) })}>
+            {[1, 2, 3].map(v => <option key={v} value={v}>≥{v} of these</option>)}
+          </select>
+        </div>
+      </div>
+    )
+  }
+  if (signal.type === 'grade-numeric') {
+    return (
+      <div style={rowSt}>
+        <span style={{ fontSize: 12, color: '#2A3B7C' }}>{signal.column} — below</span>
+        <select style={sel} value={threshold.grade} onChange={e => onChange({ grade: Number(e.target.value) })}>
+          {[50, 60, 65, 70].map(v => <option key={v} value={v}>{v}</option>)}
+        </select>
+      </div>
+    )
+  }
+  // grade-letter
+  return (
+    <div style={rowSt}>
+      <span style={{ fontSize: 12, color: '#2A3B7C' }}>{signal.column}</span>
+      <select style={sel} value={threshold.gradeLetter} onChange={e => onChange({ gradeLetter: e.target.value })}>
+        <option value="D">D or below (D, F)</option>
+        <option value="F">F only</option>
+      </select>
+    </div>
+  )
+}
+
+// Shared by CriteriaSettingCard (initial setup) and MessageInput's "Adjust
+// risk criteria" popover (mid-conversation edits) — one category can now
+// have several independent signals, so both need the same grouped rendering
+// rather than duplicating it.
+export function CriteriaFields({
+  indicators, columnUniques, value, onChange,
+}: {
+  indicators?: Indicators
+  columnUniques?: Record<string, string[]>
+  value: Thresholds
+  onChange: (t: Thresholds) => void
+}) {
+  const groups = groupByCategory(indicators ?? [])
+  const dot = (color: string): React.CSSProperties => ({ width: 8, height: 8, borderRadius: '50%', background: color, flexShrink: 0 })
+
+  function updateSignal(key: string, patch: Partial<SignalThreshold>) {
+    onChange(value.map(t => signalKey(t) === key ? { ...t, ...patch } : t))
+  }
+  function toggleValue(key: string, v: string) {
+    onChange(value.map(t => {
+      if (signalKey(t) !== key) return t
+      const cur = t.values ?? []
+      return { ...t, values: cur.includes(v) ? cur.filter(x => x !== v) : [...cur, v] }
+    }))
+  }
+
+  return (
+    <>
+      {(['attendance', 'behavior', 'courseFailure'] as const).map(cat => {
+        const signals = groups[cat]
+        if (!signals.length) return null
+        const meta = CATEGORY_META[cat]
+        return (
+          <div key={cat} style={{ padding: '10px 0', borderBottom: '1px solid #eef2f8' }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: '#2A3B7C', display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+              <span style={dot(meta.dot)} /> {meta.label}
+            </div>
+            {signals.length > 1 && (
+              <div style={{ fontSize: 10, color: '#8a9bb8', marginBottom: 8, paddingLeft: 16 }}>
+                Flagged if ANY of the following are met:
+              </div>
+            )}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, paddingLeft: 16 }}>
+              {signals.map(sig => {
+                const key = signalKey(sig)
+                const threshold = value.find(t => signalKey(t) === key)
+                if (!threshold) return null
+                return (
+                  <SignalRow
+                    key={key}
+                    signal={sig}
+                    threshold={threshold}
+                    columnUniques={columnUniques}
+                    onChange={patch => updateSignal(key, patch)}
+                    onToggleValue={v => toggleValue(key, v)}
+                  />
+                )
+              })}
+            </div>
+          </div>
+        )
+      })}
+    </>
+  )
+}
+
+export default function CriteriaSettingCard({ indicators, columnUniques, onConfirm }: Props) {
+  const [t, setT] = useState<Thresholds>(() => initThresholds(indicators))
   const [confirmed, setConfirmed] = useState(false)
 
   function handleConfirm() {
@@ -90,12 +273,7 @@ export default function CriteriaSettingCard({ indicators, onConfirm }: Props) {
     )
   }
 
-  const rowStyle: React.CSSProperties = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', borderBottom: '1px solid #eef2f8' }
-  const labelStyle: React.CSSProperties = { fontSize: 13, color: '#2A3B7C', fontWeight: 500, display: 'flex', alignItems: 'center', gap: 8 }
-  const dot = (color: string) => ({ width: 8, height: 8, borderRadius: '50%', background: color, flexShrink: 0 } as React.CSSProperties)
-  const sel: React.CSSProperties = { border: '1px solid #d4dff7', borderRadius: 8, padding: '6px 10px', fontSize: 12, color: '#2A3B7C', background: '#fff', minWidth: 200 }
-
-  const hasAny = absence || suspension || failure
+  const hasAny = (indicators ?? []).length > 0
 
   return (
     <div className="analysis-card" style={{ maxWidth: 500 }}>
@@ -103,89 +281,13 @@ export default function CriteriaSettingCard({ indicators, onConfirm }: Props) {
         <span className="analysis-card-title">Set indicator criteria</span>
       </div>
       <div className="analysis-card-body" style={{ paddingTop: 4, paddingBottom: 8 }}>
-
-        {/* Chronic absence */}
-        {absence?.type === 'rate' && (
-          <div style={rowStyle}>
-            <div style={labelStyle}>
-              <span style={dot('#3E94A5')} />
-              Chronic absence — flag students with
-            </div>
-            <select style={sel} value={t.absencePct} onChange={e => setT(p => ({ ...p, absencePct: Number(e.target.value) }))}>
-              {[5, 10, 15, 20].map(v => <option key={v} value={v}>≥{v}% days missed</option>)}
-            </select>
-          </div>
-        )}
-        {absence?.type === 'days' && (
-          <div style={rowStyle}>
-            <div style={labelStyle}>
-              <span style={dot('#3E94A5')} />
-              Chronic absence — flag students with
-            </div>
-            <select style={sel} value={t.absenceDays} onChange={e => setT(p => ({ ...p, absenceDays: Number(e.target.value) }))}>
-              {[5, 10, 15, 20, 25].map(v => <option key={v} value={v}>≥{v} days absent</option>)}
-            </select>
-          </div>
-        )}
-
-        {/* Suspension */}
-        {suspension && (
-          <div style={rowStyle}>
-            <div style={labelStyle}>
-              <span style={dot('#B45309')} />
-              Suspension — flag students with
-            </div>
-            <select style={sel} value={t.suspensionMin} onChange={e => setT(p => ({ ...p, suspensionMin: Number(e.target.value) }))}>
-              {[1, 2, 3].map(v => <option key={v} value={v}>≥{v} suspension{v > 1 ? 's' : ''}</option>)}
-            </select>
-          </div>
-        )}
-
-        {/* Academic failure — numeric grade */}
-        {failure?.type === 'grade-numeric' && (
-          <div style={{ ...rowStyle, borderBottom: 'none' }}>
-            <div style={labelStyle}>
-              <span style={dot('#c53030')} />
-              Academic failure — grade below
-            </div>
-            <select style={sel} value={t.failingGrade} onChange={e => setT(p => ({ ...p, failingGrade: Number(e.target.value) }))}>
-              {[50, 60, 65, 70].map(v => <option key={v} value={v}>Below {v}</option>)}
-            </select>
-          </div>
-        )}
-
-        {/* Academic failure — letter grade */}
-        {failure?.type === 'grade-letter' && (
-          <div style={{ ...rowStyle, borderBottom: 'none' }}>
-            <div style={labelStyle}>
-              <span style={dot('#c53030')} />
-              Academic failure — flag students with
-            </div>
-            <select style={sel} value={t.failingGradeLetter} onChange={e => setT(p => ({ ...p, failingGradeLetter: e.target.value }))}>
-              <option value="D">D or below (D, F)</option>
-              <option value="F">F only</option>
-            </select>
-          </div>
-        )}
-
-        {/* Academic failure — count of failed courses */}
-        {failure?.type === 'count' && (
-          <div style={{ ...rowStyle, borderBottom: 'none' }}>
-            <div style={labelStyle}>
-              <span style={dot('#c53030')} />
-              Academic failure — flag students with
-            </div>
-            <select style={sel} value={t.failingCount} onChange={e => setT(p => ({ ...p, failingCount: Number(e.target.value) }))}>
-              {[1, 2, 3].map(v => <option key={v} value={v}>≥{v} failed course{v > 1 ? 's' : ''}</option>)}
-            </select>
-          </div>
-        )}
-
-        {!hasAny && (
-          <p style={{ fontSize: 13, color: '#6b7280', margin: '8px 0' }}>
-            Could not automatically detect risk indicator columns. Ask Ev to run the analysis and describe your column names.
-          </p>
-        )}
+        {hasAny
+          ? <CriteriaFields indicators={indicators} columnUniques={columnUniques} value={t} onChange={setT} />
+          : (
+            <p style={{ fontSize: 13, color: '#6b7280', margin: '8px 0' }}>
+              Could not automatically detect risk indicator columns. Ask Ev to run the analysis and describe your column names.
+            </p>
+          )}
 
         <button
           type="button"
