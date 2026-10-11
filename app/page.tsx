@@ -1362,6 +1362,7 @@ export default function Page() {
               onChangeCriteria={handleChangeCriteria}
               indicators={indicatorsRef.current}
               columnUniques={columnUniques}
+              columnMapping={columnMapping}
               csvPreview={csvPreview}
               activeKB={activeKB}
               onToggleSource={k => setActiveKB(prev => prev.includes(k) ? prev.filter(x => x !== k) : [...prev, k])}

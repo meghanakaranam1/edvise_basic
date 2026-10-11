@@ -167,21 +167,25 @@ function PresetOrOther({
 }
 
 function SignalRow({
-  signal, threshold, columnUniques, onChange, onToggleValue,
+  signal, threshold, columnUniques, columnMapping, onChange, onToggleValue,
 }: {
   signal: Signal
   threshold: SignalThreshold
   columnUniques?: Record<string, string[]>
+  // Raw CSV header -> human-readable label (e.g. "attrate" -> "Attendance
+  // Rate"). Falls back to the raw column name when no mapping exists for it.
+  columnMapping?: Record<string, string>
   onChange: (patch: Partial<SignalThreshold>) => void
   onToggleValue: (v: string) => void
 }) {
   const sel: React.CSSProperties = { border: '1px solid #d4dff7', borderRadius: 8, padding: '6px 10px', fontSize: 12, color: '#2A3B7C', background: '#fff', minWidth: 180 }
   const rowSt: React.CSSProperties = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }
+  const label = columnMapping?.[signal.column] ?? signal.column
 
   if (signal.type === 'rate' || signal.type === 'days') {
     return (
       <div style={rowSt}>
-        <span style={{ fontSize: 12, color: '#2A3B7C' }}>{signal.column}</span>
+        <span style={{ fontSize: 12, color: '#2A3B7C' }}>{label}</span>
         <PresetOrOther
           value={threshold.pct ?? 10}
           presets={[5, 10, 15, 20]}
@@ -197,7 +201,7 @@ function SignalRow({
   if (signal.type === 'count') {
     return (
       <div style={rowSt}>
-        <span style={{ fontSize: 12, color: '#2A3B7C' }}>{signal.column}</span>
+        <span style={{ fontSize: 12, color: '#2A3B7C' }}>{label}</span>
         <PresetOrOther
           value={threshold.min ?? 1}
           presets={[1, 2, 3]}
@@ -218,7 +222,7 @@ function SignalRow({
     const options = columnUniques?.[signalKey(signal)] ?? columnUniques?.[signal.column] ?? signal.values ?? []
     return (
       <div>
-        <div style={{ fontSize: 11, color: '#8a9bb8', marginBottom: 4 }}>{signal.column} — which values count?</div>
+        <div style={{ fontSize: 11, color: '#8a9bb8', marginBottom: 4 }}>{label} — which values count?</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 6 }}>
           {options.map(v => (
             <label key={v} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12, color: '#2A3B7C', cursor: 'pointer' }}>
@@ -244,7 +248,7 @@ function SignalRow({
   if (signal.type === 'grade-numeric') {
     return (
       <div style={rowSt}>
-        <span style={{ fontSize: 12, color: '#2A3B7C' }}>{signal.column} — below</span>
+        <span style={{ fontSize: 12, color: '#2A3B7C' }}>{label} — below</span>
         <PresetOrOther
           value={threshold.grade ?? 60}
           presets={[50, 60, 65, 70]}
@@ -259,7 +263,7 @@ function SignalRow({
   // grade-letter
   return (
     <div style={rowSt}>
-      <span style={{ fontSize: 12, color: '#2A3B7C' }}>{signal.column}</span>
+      <span style={{ fontSize: 12, color: '#2A3B7C' }}>{label}</span>
       <select style={sel} value={threshold.gradeLetter} onChange={e => onChange({ gradeLetter: e.target.value })}>
         <option value="D">D or below (D, F)</option>
         <option value="F">F only</option>
@@ -273,10 +277,11 @@ function SignalRow({
 // have several independent signals, so both need the same grouped rendering
 // rather than duplicating it.
 export function CriteriaFields({
-  indicators, columnUniques, value, onChange,
+  indicators, columnUniques, columnMapping, value, onChange,
 }: {
   indicators?: Indicators
   columnUniques?: Record<string, string[]>
+  columnMapping?: Record<string, string>
   value: Thresholds
   onChange: (t: Thresholds) => void
 }) {
@@ -321,6 +326,7 @@ export function CriteriaFields({
                     signal={sig}
                     threshold={threshold}
                     columnUniques={columnUniques}
+                    columnMapping={columnMapping}
                     onChange={patch => updateSignal(key, patch)}
                     onToggleValue={v => toggleValue(key, v)}
                   />
@@ -334,7 +340,7 @@ export function CriteriaFields({
   )
 }
 
-export default function CriteriaSettingCard({ indicators, columnUniques, onConfirm }: Props) {
+export default function CriteriaSettingCard({ indicators, columnUniques, columnMapping, onConfirm }: Props) {
   const [t, setT] = useState<Thresholds>(() => initThresholds(indicators))
   const [confirmed, setConfirmed] = useState(false)
 
@@ -362,7 +368,7 @@ export default function CriteriaSettingCard({ indicators, columnUniques, onConfi
       </div>
       <div className="analysis-card-body" style={{ paddingTop: 4, paddingBottom: 8 }}>
         {hasAny
-          ? <CriteriaFields indicators={indicators} columnUniques={columnUniques} value={t} onChange={setT} />
+          ? <CriteriaFields indicators={indicators} columnUniques={columnUniques} columnMapping={columnMapping} value={t} onChange={setT} />
           : (
             <p style={{ fontSize: 13, color: '#6b7280', margin: '8px 0' }}>
               Could not automatically detect risk indicator columns. Ask Ev to run the analysis and describe your column names.

@@ -16,6 +16,7 @@ interface Props {
   onChangeCriteria?: (t: Thresholds) => void
   indicators?: Indicators
   columnUniques?: Record<string, string[]>
+  columnMapping?: Record<string, string>
   csvPreview?: { columns: string[]; rows: Record<string, string>[] }
   activeKB: SourceKey[]
   onToggleSource: (key: SourceKey) => void
@@ -74,7 +75,7 @@ function parseEdviseMention(text: string): { mentionsEdvise: boolean; cleaned: s
 
 export default function MessageInput({
   onSend, onFileSelect, disabled, fileLabel, onRemoveFile,
-  thresholds, onChangeCriteria, indicators, columnUniques, csvPreview,
+  thresholds, onChangeCriteria, indicators, columnUniques, columnMapping, csvPreview,
   activeKB, onToggleSource,
   pdfFiles, pdfUploading, onPdfSelect, onRemovePdf,
   focusTrigger,
@@ -180,7 +181,7 @@ export default function MessageInput({
             Adjust risk criteria
           </div>
 
-          <CriteriaFields indicators={indicators} columnUniques={columnUniques} value={editT} onChange={setEditT} />
+          <CriteriaFields indicators={indicators} columnUniques={columnUniques} columnMapping={columnMapping} value={editT} onChange={setEditT} />
 
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
             <button type="button" onClick={() => setShowCriteria(false)} style={{ fontSize: 12, color: '#7a89b8', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 8px' }}>
