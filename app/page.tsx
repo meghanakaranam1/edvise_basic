@@ -466,6 +466,7 @@ export default function Page() {
     let pendingToolCall: { id: string; input: { question: string; choices: string[] } } | null = null
     // Artifact type to auto-generate (set by update_plan tool SSE event)
     let pendingGenerate: ArtifactType | null = null
+    let pendingGenerateToolCallId: string | null = null
 
     try {
       await streamChat({
@@ -503,8 +504,9 @@ export default function Page() {
             return next
           })
         },
-        onUpdatePlan(artifactType) {
+        onUpdatePlan(artifactType, toolCallId) {
           pendingGenerate = artifactType
+          pendingGenerateToolCallId = toolCallId
         },
         onAskChoices(toolCallId, question, choices, allowMultiple) {
           // Store so we can push proper tool_use block after stream ends
@@ -549,6 +551,26 @@ export default function Page() {
         apiMessages.current.push({
           role: 'assistant',
           content: [{ type: 'tool_use', id: tc.id, name: 'ask_clarifying_question', input: tc.input }],
+        })
+      } else if (pendingGenerate && pendingGenerateToolCallId) {
+        // Record update_plan as a real tool_use + synthetic tool_result,
+        // the same way ask_clarifying_question always has been — without
+        // this, update_plan left NO trace in the history Claude reads back.
+        // Confirmed live: a later request in the same conversation (e.g.
+        // generating a report right after an action plan) would make
+        // Claude re-read its own history, see an answered question
+        // sequence followed by nothing, and conclude the earlier document
+        // was never actually generated — redundantly redoing it alongside
+        // the new request. No further "answer" is needed for this one
+        // (unlike a clarifying question), so the tool_result is synthesized
+        // immediately rather than waiting on the teacher.
+        apiMessages.current.push({
+          role: 'assistant',
+          content: [{ type: 'tool_use', id: pendingGenerateToolCallId, name: 'update_plan', input: { type: pendingGenerate } }],
+        })
+        apiMessages.current.push({
+          role: 'user',
+          content: [{ type: 'tool_result', tool_use_id: pendingGenerateToolCallId, content: `${GENERATE_LABEL[pendingGenerate]} generated and sent to the panel.` }],
         })
       } else {
         apiMessages.current.push({ role: 'assistant', content: accumulated })

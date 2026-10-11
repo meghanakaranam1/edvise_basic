@@ -154,7 +154,7 @@ export async function streamChat({
   onTableCsv: (filename: string, csv: string) => void
   onSources?: (sources: Array<{ title: string; kind: 'kb' | 'web' | 'pdf'; url?: string; kbDocId?: string; fileId?: string; filename?: string }>) => void
   onAskChoices?: (toolCallId: string, question: string, choices: string[], allowMultiple: boolean) => void
-  onUpdatePlan?: (artifactType: 'action_plan' | 'agenda' | 'report') => void
+  onUpdatePlan?: (artifactType: 'action_plan' | 'agenda' | 'report', toolCallId: string) => void
 }): Promise<void> {
   const res = await fetch('/api/chat', {
     method: 'POST',
@@ -183,7 +183,7 @@ export async function streamChat({
         if (e.type === 'table_csv') onTableCsv(e.filename as string, e.csv as string)
         if (e.type === 'sources' && onSources) onSources(e.sources as Array<{ title: string; kind: 'kb' | 'web' | 'pdf'; url?: string; kbDocId?: string; fileId?: string; filename?: string }>)
         if (e.type === 'ask_choices' && onAskChoices) onAskChoices(e.toolCallId as string, e.question as string, e.choices as string[], (e.allowMultiple as boolean) ?? false)
-        if (e.type === 'update_plan' && onUpdatePlan) onUpdatePlan(e.artifactType as 'action_plan' | 'agenda' | 'report')
+        if (e.type === 'update_plan' && onUpdatePlan) onUpdatePlan(e.artifactType as 'action_plan' | 'agenda' | 'report', e.toolCallId as string)
       } catch { /* skip malformed lines */ }
     }
     if (done) break

@@ -659,7 +659,16 @@ Each section must stand alone — do not cross-reference between sections. Only 
                 try {
                   const { type } = JSON.parse(toolBuffer) as { type: 'action_plan' | 'agenda' | 'report' };
                   console.log('📋 update_plan:', type);
-                  send({ type: "update_plan", artifactType: type });
+                  // toolCallId lets the client record a real tool_use (and
+                  // synthetic tool_result) for this call in apiMessages.current
+                  // — without it, update_plan left NO trace in history (unlike
+                  // ask_clarifying_question, which always does), so on a later
+                  // turn in the same conversation Claude would re-read its own
+                  // history, see an answered question sequence followed by
+                  // nothing, and conclude the document was never actually
+                  // generated — reliably causing it to redundantly redo an
+                  // already-completed generation alongside a new request.
+                  send({ type: "update_plan", artifactType: type, toolCallId: currentToolUseId });
                 } catch {}
                 toolBuffer = "";
                 currentToolName = "";
