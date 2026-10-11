@@ -563,6 +563,16 @@ export default function Page() {
         const scopedNoteIds = manualGenerateNoteIdsRef.current ?? undefined
         manualGenerateNoteIdsRef.current = null
         handleGenerate(pendingGenerate, scopedNoteIds)
+        // The model calling update_plan is what actually matters — that's
+        // the real "is it ready" signal — but it doesn't reliably also
+        // write the accompanying confirmation sentence every time, leaving
+        // an empty chat bubble even though the panel populated correctly.
+        // Don't depend on the model remembering; generate the confirmation
+        // deterministically whenever it's missing.
+        if (!accumulated.trim()) {
+          const label = GENERATE_LABEL[pendingGenerate]
+          replaceLastAssistant(() => `Your ${label} is ready in the panel!`)
+        }
       } else if (pendingToolCall) {
         // Another clarifying question — the flow is still progressing
         // normally, nothing to detect here.
