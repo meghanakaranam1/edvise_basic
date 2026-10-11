@@ -508,12 +508,20 @@ export default function Page() {
             onSubmit: handleClarifySubmit,
             id: Date.now().toString(),
           }
-          // Replace the empty streaming placeholder with the card so only one Ev bubble shows
+          // Replace the streaming placeholder with the card so only the
+          // question shows, back-to-back with any question before it — not
+          // a separate chat bubble. The model sometimes streams a short
+          // lead-in line ("One last question before...") in the same turn
+          // right before calling the tool; previously that line survived as
+          // its own bubble (this only swapped an EMPTY placeholder, falling
+          // through to append the card as a new message otherwise), making
+          // the clarifying-question sequence look interrupted by chat. The
+          // lead-in text isn't needed — the question card speaks for itself.
           setMessages(prev => {
             const next = [...prev]
             for (let i = next.length - 1; i >= 0; i--) {
               const m = next[i]
-              if (m.role === 'assistant' && !('isLoading' in m) && !(m as { content: string }).content?.trim()) {
+              if (m.role === 'assistant' && !('isLoading' in m)) {
                 next[i] = card
                 return next
               }
