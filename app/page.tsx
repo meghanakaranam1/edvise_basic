@@ -245,7 +245,21 @@ export default function Page() {
   const remoteStreamingRef = useRef(false)
 
   useEffect(() => {
-    if (!activeConversationId || !session) return
+    // Only meaningful for an actually-shared conversation (>1 member) — this
+    // listener's whole purpose is relaying a TEAMMATE's messages/replies in,
+    // which can't happen in a solo conversation. Critically, subscribing
+    // unconditionally caused real corruption even solo: the 'assistant' row
+    // branch below has no "is this my own reply" check (unlike the 'user'
+    // branch, which correctly skips row.user_id === session.user.id), so it
+    // re-pushed EVERY assistant reply into apiMessages.current a second
+    // time, right after doSend had already pushed it locally — producing an
+    // extra, structurally-invalid consecutive assistant message in the
+    // history sent back to Anthropic on the next turn. This was reliably
+    // injecting an invalid tool_use -> assistant -> tool_result sequence
+    // right in the middle of every clarifying-question exchange, which is
+    // very likely what caused the model to occasionally lose track and dead-
+    // end mid-flow instead of completing the generation.
+    if (!activeConversationId || !session || members.length <= 1) return
     const channel = supabase
       .channel(`messages-${activeConversationId}`)
       .on(
@@ -257,24 +271,43 @@ export default function Page() {
           if (row.role === 'user') {
             if (row.user_id === session.user.id) return
             const alreadyHave = messagesRef.current.slice(-3).some(m => 'content' in m && m.role === 'user' && m.content === row.content)
-            if (!alreadyHave) {
-              const sender = members.find(m => m.userId === row.user_id)
-              addMessage({ role: 'user', content: row.content, senderName: sender?.name ?? 'Teammate' })
-            }
+            if (alreadyHave) return
+            const sender = members.find(m => m.userId === row.user_id)
+            addMessage({ role: 'user', content: row.content, senderName: sender?.name ?? 'Teammate' })
+            apiMessages.current.push({ role: row.role, content: row.content })
           } else {
             setRemoteTyping(null)
             if (remoteStreamingRef.current) {
-              // Reconcile with the authoritative saved text, in case a broadcast
-              // chunk was dropped in transit (Realtime broadcast isn't guaranteed
-              // delivery, unlike the row insert itself).
+              // We were watching a TEAMMATE's reply stream live (edvise_stream
+              // broadcast chunks) — not our own, since broadcast handlers skip
+              // userId === session.user.id. Reconcile the UI with the
+              // authoritative saved text in case a chunk was dropped in
+              // transit (Realtime broadcast isn't guaranteed delivery, unlike
+              // the row insert itself), and this IS a message this client
+              // needs added to its own apiMessages.current — nothing else
+              // pushes a teammate's reply in for us.
               remoteStreamingRef.current = false
               replaceLastAssistant(() => row.content)
+              apiMessages.current.push({ role: row.role, content: row.content })
             } else {
+              // Assistant rows carry no user_id, so there's no direct way to
+              // tell "a reply to my own message" apart from "a reply to a
+              // teammate's message" the way the user branch above can. The
+              // content-equality check is what stands in for that: if this
+              // exact text is already in our own local history, it's almost
+              // certainly the row doSend just pushed for OUR OWN triggered
+              // reply landing back via realtime — not a teammate's — so skip
+              // re-adding it. Without this, every assistant reply gets
+              // double-pushed into apiMessages.current (once locally by
+              // doSend, once again here), producing a structurally invalid
+              // extra consecutive assistant message in the history sent back
+              // to Anthropic on the next turn.
               const alreadyHave = messagesRef.current.slice(-3).some(m => 'content' in m && m.role === 'assistant' && m.content === row.content)
-              if (!alreadyHave) addMessage({ role: 'assistant', content: row.content })
+              if (alreadyHave) return
+              addMessage({ role: 'assistant', content: row.content })
+              apiMessages.current.push({ role: row.role, content: row.content })
             }
           }
-          apiMessages.current.push({ role: row.role, content: row.content })
         }
       )
       // Ephemeral "Edvise is answering…" signal — not persisted, just broadcast live
