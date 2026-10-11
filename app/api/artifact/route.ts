@@ -65,10 +65,37 @@ type EditContext = {
   comment: string
 }
 
+// A message's content coming from the chat history is NOT always a plain
+// string — clarifying-question exchanges (now mandatory before every
+// action_plan/agenda generation) push tool_use/tool_result blocks instead,
+// whose content is an array of objects. Blindly calling .slice(0, 1000) on
+// that doesn't throw, but the template literal that wraps it stringifies
+// each block as "[object Object]" — Claude would see garbage instead of
+// the actual question/answer, degrading or outright breaking generation.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function contentToText(content: unknown): string {
+  if (typeof content === 'string') return content
+  if (Array.isArray(content)) {
+    return content
+      .map((block: Record<string, unknown>) => {
+        if (typeof block === 'string') return block
+        if (block && typeof block === 'object') {
+          if (typeof block.text === 'string') return block.text
+          if (typeof block.content === 'string') return block.content
+          if (block.input !== undefined) return JSON.stringify(block.input)
+        }
+        return ''
+      })
+      .filter(Boolean)
+      .join(' ')
+  }
+  return ''
+}
+
 export async function POST(req: NextRequest) {
   const { type, messages, notes, editContext }: {
     type: ArtifactType
-    messages: { role: string; content: string }[]
+    messages: { role: string; content: unknown }[]
     notes?: { id: string; content: string }[]
     editContext?: EditContext
   } = await req.json()
@@ -76,7 +103,7 @@ export async function POST(req: NextRequest) {
   if (!SCHEMAS[type]) return new Response('Invalid type', { status: 400 })
 
   const context = messages
-    .map(m => `${m.role === 'user' ? 'Teacher' : 'Edvise'}: ${m.content.slice(0, 1000)}`)
+    .map(m => `${m.role === 'user' ? 'Teacher' : 'Edvise'}: ${contentToText(m.content).slice(0, 1000)}`)
     .join('\n\n')
 
   const notesBlock = notes && notes.length > 0
@@ -129,6 +156,11 @@ ${schema}`,
     parsed.date_created = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
     return Response.json(parsed)
   } catch {
+    // Logged server-side (visible in Vercel's function logs) since the
+    // client only sees a generic failure — this is the one place that can
+    // reveal whether the model actually returned malformed JSON, or
+    // whether the context it was given was garbled going in.
+    console.error(`/api/artifact JSON parse error for type=${type}. Raw response:`, raw)
     return new Response('JSON parse error', { status: 500 })
   }
 }

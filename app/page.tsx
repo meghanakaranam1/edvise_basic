@@ -866,6 +866,12 @@ export default function Page() {
     conversationIdRef.current = id
     setMainView('chat')
     setMembers([])
+    // A clarifying-question card left unanswered when switching away (e.g.
+    // a teacher opens a saved conversation mid-question) has no way to ever
+    // get answered again — there's nothing left to click. Without clearing
+    // this, doSend's duplicate-request guard would silently block every
+    // future send, in this conversation and every other one, forever.
+    clarifyToolCallRef.current = null
     // Notes and generated documents belong to the conversation they were
     // created in, same as handleNewChat — notes/artifacts aren't reloaded
     // from this conversation's own history below (not persisted per-
@@ -932,6 +938,11 @@ export default function Page() {
     setPdfFiles([])
     setMembers([])
     setMainView('chat')
+    // See the matching comment in handleSelectConversation — an unanswered
+    // clarifying card left behind in the old conversation would otherwise
+    // permanently block every future send via doSend's duplicate-request
+    // guard, since there's no card left anywhere to answer it with.
+    clarifyToolCallRef.current = null
     // Notes and generated documents belong to the conversation they were
     // created in — a new chat starts with an empty right panel, not the
     // previous conversation's leftover notes/Action Plan/Agenda/Report
@@ -969,6 +980,22 @@ export default function Page() {
       addMessage({ role: 'assistant', content: "Go ahead — ask anything. You can upload a CSV/Excel file, a PDF, or just type your question." })
       setInputFocusTrigger(n => n + 1)
       return
+    }
+    // A typed request to generate from notes (as opposed to clicking
+    // Generate in the Notes tab) used to never get note content attached —
+    // only the Notes-tab picker embedded it. Detect the same intent here
+    // so typing "make me an action plan from my notes" gets the same
+    // grounding as using the picker. Since a typed request doesn't specify
+    // which notes, this uses all of them, same as the picker's "Select
+    // all" default.
+    if (notes.length && /\bnotes?\b/i.test(text)) {
+      const typeMatch = Object.entries(GENERATE_LABEL).find(([, label]) =>
+        new RegExp(label.replace(' ', '\\s+'), 'i').test(text) || (label === 'meeting agenda' && /\bagenda\b/i.test(text))
+      )
+      if (typeMatch) {
+        doSend(text, kbScope ?? getKbScope(), undefined, false, undefined, buildNotesContext(typeMatch[1], notes))
+        return
+      }
     }
     doSend(text, kbScope ?? getKbScope())
   }
@@ -1091,24 +1118,28 @@ export default function Page() {
     agenda: 'meeting agenda',
     report: 'report',
   }
+  // The chat turn (clarifying questions, etc.) previously had no idea what
+  // "my saved notes" even referred to — only /api/artifact ever received
+  // note content, once update_plan fired. That left Claude unable to see
+  // the notes while it was asking its clarifying questions, sometimes
+  // surfacing a confusing "I don't see any saved notes attached" reply.
+  // This builds the same invisible, model-only context block (appended
+  // only to the API-facing text, never shown in the chat bubble) used by
+  // both the Notes-tab picker AND a typed "generate X from my notes"
+  // request — previously only the picker path embedded it.
+  function buildNotesContext(label: string, selectedNotes: Note[]): string | undefined {
+    return selectedNotes.length
+      ? `(For your context only, not shown to the teacher — the saved notes this ${label} should be grounded in:\n${selectedNotes.map((n, i) => `Note ${i + 1}: ${n.content.replace(/<!--[\s\S]*?-->/g, '').trim()}`).join('\n\n')})`
+      : undefined
+  }
   function requestGenerateFromNotes(type: ArtifactType, noteIds: string[]) {
     manualGenerateNoteIdsRef.current = noteIds
     const label = GENERATE_LABEL[type]
     const text = noteIds.length === notes.length
       ? `Generate a ${label} from my saved notes.`
       : `Generate a ${label} from these ${noteIds.length} selected notes.`
-    // The chat turn (clarifying questions, etc.) previously had no idea what
-    // "my saved notes" even referred to — only /api/artifact ever received
-    // note content, once update_plan fired. That left Claude unable to see
-    // the notes while it was asking its clarifying questions, sometimes
-    // surfacing a confusing "I don't see any saved notes attached" reply.
-    // Embed the actual note content here too, invisibly (it's appended only
-    // to the model-facing text, not the chat bubble the teacher sees).
     const selectedNotes = notes.filter(n => noteIds.includes(n.id))
-    const notesContext = selectedNotes.length
-      ? `(For your context only, not shown to the teacher — the saved notes this ${label} should be grounded in:\n${selectedNotes.map((n, i) => `Note ${i + 1}: ${n.content.replace(/<!--[\s\S]*?-->/g, '').trim()}`).join('\n\n')})`
-      : undefined
-    doSend(text, getKbScope(), undefined, false, undefined, notesContext)
+    doSend(text, getKbScope(), undefined, false, undefined, buildNotesContext(label, selectedNotes))
   }
 
   async function handleGenerate(type: ArtifactType, noteIds?: string[]) {
@@ -1117,11 +1148,15 @@ export default function Page() {
       const selectedNotes = noteIds
         ? notes.filter(n => noteIds.includes(n.id))
         : notes
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const result = await generateArtifact(type, apiMessages.current as any, selectedNotes)
+      const result = await generateArtifact(type, apiMessages.current, selectedNotes)
       setArtifacts(prev => ({ ...prev, [type]: result }))
     } catch (err) {
       console.error('Artifact generation failed:', err)
+      // Without this, a failed generation left the panel silently stuck on
+      // its empty "No action plan yet" state with no indication anything
+      // had gone wrong — the teacher had no way to tell a real failure
+      // apart from simply never having generated one.
+      addMessage({ role: 'assistant', content: `Something went wrong generating the ${type.replace('_', ' ')} — want to try again?` })
     } finally {
       setGenerating(null)
     }

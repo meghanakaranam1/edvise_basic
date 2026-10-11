@@ -23,7 +23,11 @@ export async function fetchIdentityColumns(headers: string[], preview: Record<st
 
 export async function generateArtifact(
   type: 'action_plan' | 'agenda' | 'report',
-  messages: { role: string; content: string }[],
+  // Chat history messages — content is a plain string for normal turns, but
+  // an array of tool_use/tool_result blocks for clarifying-question
+  // exchanges (see contentToText in /api/artifact/route.ts, which handles
+  // both shapes).
+  messages: { role: string; content: unknown }[],
   notes?: { id: string; content: string }[],
   // Present only for an anchored inline-comment edit (see AnchoredComments.tsx)
   // — a scoped revision of an existing document, not a fresh generation. When
