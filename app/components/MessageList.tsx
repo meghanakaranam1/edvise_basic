@@ -530,13 +530,13 @@ export default function MessageList({
           return (
             <div key={msg.id} className="msg-wrap assistant" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               <div style={{ border: '1px solid #e4e9f2', borderRadius: 10, padding: '10px 13px', background: '#f7f9fc', maxWidth: '92%' }}>
-                <div style={{ fontSize: 10.5, color: '#7a89b8', marginBottom: 6 }}>Comment on &quot;{msg.artifactTitle}&quot; sent to Claude</div>
+                <div style={{ fontSize: 10.5, color: '#7a89b8', marginBottom: 6 }}>Comment on &quot;{msg.artifactTitle}&quot; sent to Edvise</div>
                 {msg.quoted && (
                   <div style={{ fontSize: 11, color: '#9ca3af', fontStyle: 'italic', marginBottom: 6, borderLeft: '2px solid #f0c75e', paddingLeft: 8 }}>
                     &ldquo;{msg.quoted.length > 90 ? msg.quoted.slice(0, 90) + '…' : msg.quoted}&rdquo;
                   </div>
                 )}
-                <div style={{ fontSize: 12.5, color: '#2A3B7C' }}><b style={{ color: '#3E94A5' }}>@Claude</b> {msg.text}</div>
+                <div style={{ fontSize: 12.5, color: '#2A3B7C' }}><b style={{ color: '#3E94A5' }}>@Edvise</b> {msg.text}</div>
               </div>
               {msg.status === 'sent' && (
                 <div className="assistant-row">
@@ -548,7 +548,7 @@ export default function MessageList({
                 <div className="assistant-row">
                   <div className="ev-av">Ev</div>
                   <div className="assistant-body">
-                    <div style={{ fontSize: 10.5, color: '#7a89b8', marginBottom: 6 }}>Used Claude Docs ›</div>
+                    <div style={{ fontSize: 10.5, color: '#7a89b8', marginBottom: 6 }}>Used in your Artifacts ›</div>
                     <div
                       onClick={() => onOpenArtifact?.(msg.artifactType)}
                       role={onOpenArtifact ? 'button' : undefined}
@@ -557,7 +557,7 @@ export default function MessageList({
                       <div style={{ width: 30, height: 30, borderRadius: 7, background: '#f7f9fc', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, flexShrink: 0 }}>📄</div>
                       <div>
                         <div style={{ fontSize: 12.5, fontWeight: 600, color: '#2A3B7C' }}>{msg.artifactTitle}</div>
-                        <div style={{ fontSize: 10.5, color: '#7a89b8' }}>Claude Docs · Only you</div>
+                        <div style={{ fontSize: 10.5, color: '#7a89b8' }}>Your Artifacts · Only you</div>
                       </div>
                     </div>
                     {msg.summary && <div style={{ fontSize: 13, color: '#2A3B7C', lineHeight: 1.5 }}>{msg.summary}</div>}
