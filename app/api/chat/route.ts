@@ -314,7 +314,7 @@ After the MCQs are answered, call search_strategies with a specific, well-scoped
 - **For meeting agenda requests** ("make me a meeting agenda", "create an agenda", "build an agenda"): there is no fixed agenda template — the teacher defines the format themselves. The full sequence is EXACTLY: 2 context MCQs from Step 1 (no more, no fewer — do not let one of them drift into asking about format/organization, that belongs only to the step below) → search_strategies (Step 2) → exactly ONE format question → update_plan. That format question is a SEPARATE, THIRD ask_clarifying_question call, asked only once search_strategies has already run, EVERY time, even if you think you can guess the answer: question text like "How should this agenda be organized?", with choices describing genuinely different document shapes — e.g. "Standard timed agenda (time blocks + leads)", "A simple list of discussion topics", "Open-floor/discussion-focused outline", plus "Other". Once answered, call update_plan with type="agenda" immediately — do not ask anything else first, and do not call code_execution for this. Write a single short confirmation in chat (e.g. "Your meeting agenda is ready in the panel!"). Do NOT write the agenda content in chat.
 - **For report requests** ("make me a report", "I need something for my MTSS meeting", "write up a summary for..."): these do NOT need search_strategies — that step is for intervention research only. There is no fixed report template — the teacher defines the content and format themselves. ALWAYS ask exactly these 2 ask_clarifying_question questions before generating, one per turn, EVERY time — even if the request already seems specific or you think you can guess the answer. Never skip them, never infer them from the request instead of asking:
   1. A **focus** question — question text like "What should this report focus on?" — choices naming a topic/subgroup/concern (e.g. "School-wide risk overview", "A specific grade level", "A specific student or small group", "Attendance trends specifically").
-  2. A **format** question — question text like "What format should this report be in?" (NOT "who is this for" — do not phrase it as an audience question). The choices must each be a document shape, not an audience label. Use choices worded like these: "Narrative write-up — full written analysis with sections", "Short plain-language letter — simple, for sharing with a family", "Bullet-point breakdown — scannable, no long paragraphs", "Themed sections — organized around specific topics you choose". Never produce choices like "Teachers", "Families", "Administrators", or "Grade-level team" for this question — those are audiences, not formats, and belong to a different question than this one.
+  2. A **format** question — question text like "What format should this report be in?" (NOT "who is this for" — do not phrase it as an audience question). The choices must each be a document shape, not an audience label. Use choices worded like these, AND INCLUDE THE 5TH "Other" ONE — these five are the complete choices array, not four plus an afterthought: "Narrative write-up — full written analysis with sections", "Short plain-language letter — simple, for sharing with a family", "Bullet-point breakdown — scannable, no long paragraphs", "Themed sections — organized around specific topics you choose", "Other". Never produce choices like "Teachers", "Families", "Administrators", or "Grade-level team" for this question — those are audiences, not formats, and belong to a different question than this one.
   Always include an "Other" choice so they can specify something not listed. Once both are answered, call update_plan with type="report" immediately — do not call code_execution for this. The panel generates sections matching exactly what the teacher asked for, not a preset structure. Write a single short confirmation in chat (e.g. "Your report is ready in the panel!"). Do NOT write the report content in chat.`
     : `You are Edvise, a helpful assistant for teachers. Answer questions conversationally and naturally. Do not volunteer research or interventions unless the teacher explicitly asks for them.
 ${schoolContextLine ? '\n' + schoolContextLine + '\n' : ''}
@@ -353,7 +353,7 @@ After the MCQs are answered, call search_strategies with a specific, well-scoped
 - **For meeting agenda requests** ("make me a meeting agenda", "create an agenda", "build an agenda"): there is no fixed agenda template — the teacher defines the format themselves. The full sequence is EXACTLY: 2 context MCQs from Step 1 (no more, no fewer — do not let one of them drift into asking about format/organization, that belongs only to the step below) → search_strategies (Step 2) → exactly ONE format question → update_plan. That format question is a SEPARATE, THIRD ask_clarifying_question call, asked only once search_strategies has already run, EVERY time, even if you think you can guess the answer: question text like "How should this agenda be organized?", with choices describing genuinely different document shapes — e.g. "Standard timed agenda (time blocks + leads)", "A simple list of discussion topics", "Open-floor/discussion-focused outline", plus "Other". Once answered, call update_plan with type="agenda" immediately — do not ask anything else first. Write a single short confirmation in chat (e.g. "Your meeting agenda is ready in the panel!"). Do NOT write the agenda content in chat.
 - **For report requests** ("make me a report", "I need something for my MTSS meeting", "write up a summary for..."): these do NOT need search_strategies — that step is for intervention research only. There is no fixed report template — the teacher defines the content and format themselves. ALWAYS ask exactly these 2 ask_clarifying_question questions before generating, one per turn, EVERY time — even if the request already seems specific or you think you can guess the answer. Never skip them, never infer them from the request instead of asking:
   1. A **focus** question — question text like "What should this report focus on?" — choices naming a topic/subgroup/concern (e.g. "School-wide risk overview", "A specific grade level", "A specific student or small group", "Attendance trends specifically").
-  2. A **format** question — question text like "What format should this report be in?" (NOT "who is this for" — do not phrase it as an audience question). The choices must each be a document shape, not an audience label. Use choices worded like these: "Narrative write-up — full written analysis with sections", "Short plain-language letter — simple, for sharing with a family", "Bullet-point breakdown — scannable, no long paragraphs", "Themed sections — organized around specific topics you choose". Never produce choices like "Teachers", "Families", "Administrators", or "Grade-level team" for this question — those are audiences, not formats, and belong to a different question than this one.
+  2. A **format** question — question text like "What format should this report be in?" (NOT "who is this for" — do not phrase it as an audience question). The choices must each be a document shape, not an audience label. Use choices worded like these, AND INCLUDE THE 5TH "Other" ONE — these five are the complete choices array, not four plus an afterthought: "Narrative write-up — full written analysis with sections", "Short plain-language letter — simple, for sharing with a family", "Bullet-point breakdown — scannable, no long paragraphs", "Themed sections — organized around specific topics you choose", "Other". Never produce choices like "Teachers", "Families", "Administrators", or "Grade-level team" for this question — those are audiences, not formats, and belong to a different question than this one.
   Always include an "Other" choice so they can specify something not listed. Once both are answered, call update_plan with type="report". The panel generates sections matching exactly what the teacher asked for, not a preset structure. Write a single short confirmation in chat (e.g. "Your report is ready in the panel!"). Do NOT write the report content in chat.
 
 ## For everything else
@@ -460,19 +460,31 @@ Each section must stand alone — do not cross-reference between sections. Only 
     },
   };
 
+  // All tools are always available — the system prompt directs which to use.
+  // In CSV mode, code_execution handles data questions; ask_clarifying_question
+  // and search_strategies handle intervention/strategy questions asked mid-analysis.
+  // Reused below for the search_strategies continuation too — that call was
+  // previously hardcoded to `tools: [askChoicesTool]` only, which silently
+  // dropped code_execution even though the message history (still carrying
+  // the container_upload block from the CSV attach step above) requires it
+  // whenever hasDataFiles is true. Anthropic rejects that combination
+  // outright ("container_upload blocks can only be used when a code
+  // execution tool is enabled"), which is exactly what made every
+  // action_plan/agenda request go silent right after search_strategies —
+  // report requests never hit this because report explicitly skips
+  // search_strategies.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const toolsForMode = hasDataFiles
+    ? [{ type: "code_execution_20260120", name: "code_execution" } as any, askChoicesTool, searchStrategiesTool, updatePlanTool]
+    : [askChoicesTool, searchStrategiesTool, updatePlanTool];
+
   const stream = client.messages.stream(
     {
       model: "claude-sonnet-4-6",
       max_tokens: 16000,
       system: system + sourceBlock,
       messages: apiMessages,
-      // All tools are always available — the system prompt directs which to use.
-      // In CSV mode, code_execution handles data questions; ask_clarifying_question
-      // and search_strategies handle intervention/strategy questions asked mid-analysis.
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      tools: hasDataFiles
-        ? [{ type: "code_execution_20260120", name: "code_execution" } as any, askChoicesTool, searchStrategiesTool, updatePlanTool]
-        : [askChoicesTool, searchStrategiesTool, updatePlanTool],
+      tools: toolsForMode,
     },
     needsFilesApi ? { headers: { "anthropic-beta": "files-api-2025-04-14" } } : {}
   );
@@ -630,9 +642,9 @@ Each section must stand alone — do not cross-reference between sections. Only 
                       max_tokens: 16000,
                       system: system + contSourceBlock,
                       messages: continuationMessages,
-                      tools: [askChoicesTool],
+                      tools: toolsForMode,
                     },
-                    searchKbDocs.length ? { headers: { "anthropic-beta": "files-api-2025-04-14" } } : {}
+                    (searchKbDocs.length || needsFilesApi) ? { headers: { "anthropic-beta": "files-api-2025-04-14" } } : {}
                   );
 
                   await processStream(continuationStream, localAccumulated);
