@@ -34,17 +34,24 @@ export async function listSharedConversations(): Promise<Conversation[]> {
   return data ?? []
 }
 
-export async function createConversation(title: string, userId: string): Promise<Conversation> {
+export async function createConversation(title: string, userId: string, accessToken?: string): Promise<Conversation> {
   const { data, error } = await supabase
     .from('conversations')
     .insert({ title, user_id: userId })
     .select()
     .single()
   if (error) throw error
-  const { error: memberErr } = await supabase
-    .from('conversation_members')
-    .insert({ conversation_id: data.id, user_id: userId, role: 'owner' })
-  if (memberErr) console.error('conversation_members insert error:', memberErr)
+  // Done server-side (service-role key, bypasses RLS) rather than through
+  // this client's own session — the client-side insert intermittently
+  // 403'd with "new row violates row-level security policy for table
+  // conversation_members", seemingly unable to reliably see the
+  // just-committed conversations row above from the RLS policy's own check.
+  if (accessToken) {
+    fetch(`/api/conversations/${data.id}/members`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}` },
+    }).catch(err => console.error('conversation_members insert error:', err))
+  }
   return data
 }
 

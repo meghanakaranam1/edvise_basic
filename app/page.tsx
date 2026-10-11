@@ -348,8 +348,16 @@ export default function Page() {
     saveMessage(conversationIdRef.current, 'user', userText, session.user.id).catch(() => {})
   }
 
-  async function doSend(userText: string, kbScope = '', thresholdsOverride?: Thresholds, hidden = false, clarifyToolCallId?: string) {
+  async function doSend(userText: string, kbScope = '', thresholdsOverride?: Thresholds, hidden = false, clarifyToolCallId?: string, notesContext?: string) {
     if (isStreaming) return
+    // A clarifying-question card is sitting unanswered (clarifyToolCallRef is
+    // only cleared once the teacher actually answers it, in
+    // handleClarifySubmit). Block any OTHER trigger — typing, a suggested
+    // chip, or "Generate" clicked again in the right panel — from starting a
+    // second, parallel request while the first is still waiting on an
+    // answer; the one exception is the answer submission itself, which
+    // passes clarifyToolCallId and must go through.
+    if (clarifyToolCallRef.current && !clarifyToolCallId) return
     setMainView('chat')
 
     // Create Supabase conversation on the first message of this session,
@@ -359,7 +367,7 @@ export default function Page() {
     if (session && !conversationIdRef.current) {
       try {
         const title = userText.slice(0, 60)
-        const convo = await createConversation(title, session.user.id)
+        const convo = await createConversation(title, session.user.id, session.access_token)
         conversationIdRef.current = convo.id
         setActiveConversationId(convo.id)
         setSidebarRefreshKey(k => k + 1)
@@ -396,7 +404,7 @@ export default function Page() {
         content: [{ type: 'tool_result', tool_use_id: clarifyToolCallId, content: userText }],
       })
     } else {
-      apiMessages.current.push({ role: 'user', content: userText })
+      apiMessages.current.push({ role: 'user', content: notesContext ? `${userText}\n\n${notesContext}` : userText })
     }
     addMessage({ role: 'assistant', content: '' })
     setIsStreaming(true)
@@ -1086,9 +1094,21 @@ export default function Page() {
   function requestGenerateFromNotes(type: ArtifactType, noteIds: string[]) {
     manualGenerateNoteIdsRef.current = noteIds
     const label = GENERATE_LABEL[type]
-    handleSend(noteIds.length === notes.length
+    const text = noteIds.length === notes.length
       ? `Generate a ${label} from my saved notes.`
-      : `Generate a ${label} from these ${noteIds.length} selected notes.`)
+      : `Generate a ${label} from these ${noteIds.length} selected notes.`
+    // The chat turn (clarifying questions, etc.) previously had no idea what
+    // "my saved notes" even referred to — only /api/artifact ever received
+    // note content, once update_plan fired. That left Claude unable to see
+    // the notes while it was asking its clarifying questions, sometimes
+    // surfacing a confusing "I don't see any saved notes attached" reply.
+    // Embed the actual note content here too, invisibly (it's appended only
+    // to the model-facing text, not the chat bubble the teacher sees).
+    const selectedNotes = notes.filter(n => noteIds.includes(n.id))
+    const notesContext = selectedNotes.length
+      ? `(For your context only, not shown to the teacher — the saved notes this ${label} should be grounded in:\n${selectedNotes.map((n, i) => `Note ${i + 1}: ${n.content.replace(/<!--[\s\S]*?-->/g, '').trim()}`).join('\n\n')})`
+      : undefined
+    doSend(text, getKbScope(), undefined, false, undefined, notesContext)
   }
 
   async function handleGenerate(type: ArtifactType, noteIds?: string[]) {
