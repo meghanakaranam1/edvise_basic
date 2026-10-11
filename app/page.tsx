@@ -48,6 +48,12 @@ const CONVERSATIONS_VIEW = 'conversations'
 // turn it on; no further deploy needed on the code side.
 const ENABLE_TEAM_SHARING = process.env.NEXT_PUBLIC_ENABLE_SHARING === 'true'
 
+// Google Sheets import is built (OAuth flow, picker, tab merge) but not
+// ready to ship yet — gated behind this flag so the "Import from Google
+// Sheets" entry point in the chat input stays hidden in prod. Flip
+// NEXT_PUBLIC_ENABLE_GOOGLE_SHEETS=true to turn it on.
+const ENABLE_GOOGLE_SHEETS = process.env.NEXT_PUBLIC_ENABLE_GOOGLE_SHEETS === 'true'
+
 export default function Page() {
   // Auth
   const [session, setSession] = useState<SupabaseSession | null>(null)
@@ -1309,7 +1315,7 @@ export default function Page() {
               onPdfSelect={handlePdfSelect}
               onRemovePdf={handleRemovePdf}
               focusTrigger={inputFocusTrigger}
-              onGoogleSheetImport={handleGoogleSheetImport}
+              onGoogleSheetImport={ENABLE_GOOGLE_SHEETS ? handleGoogleSheetImport : undefined}
               sheetImporting={sheetImporting}
               isShared={ENABLE_TEAM_SHARING && members.length > 1}
               onSendPlain={doSendPlain}

@@ -102,13 +102,13 @@ export default function Sidebar({
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" width="13" height="13"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>,
           'Pending approval')}
 
-        <div className="sb-label" style={{ marginTop: 8 }}>My Materials</div>
+        <div className="sb-label" style={{ marginTop: 8 }}>My Artifacts</div>
         {/* One combined entry instead of three separate sub-tabs — the view
             itself (ActionsView, in page.tsx) shows action plans, agendas,
             and reports together in one list with type badges + filters. */}
         {nav('actions', mainView === 'actions',
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" width="13" height="13"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>,
-          'My Materials', (savedCounts.action_plan + savedCounts.agenda + savedCounts.report) || undefined)}
+          'My Artifacts', (savedCounts.action_plan + savedCounts.agenda + savedCounts.report) || undefined)}
 
         {ENABLE_TEAM_SHARING && <div className="sb-label" style={{ marginTop: 8 }}>Team Workspace</div>}
         {ENABLE_TEAM_SHARING && (sharedConversations.length === 0 ? (
