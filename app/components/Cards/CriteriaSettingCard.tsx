@@ -112,6 +112,60 @@ export function thresholdPrompt(t: Thresholds, ind?: Indicators): string {
   return blocks.join('\n')
 }
 
+// A dropdown of common preset values with an "Other…" option that swaps in a
+// free-text number input — lets a teacher pick a value outside the presets
+// (e.g. ≥12% instead of jumping from 10% to 15%) without losing the quick
+// one-click presets for the common case.
+function PresetOrOther({
+  value, presets, format, onChange, sel, min = 0, suffix,
+}: {
+  value: number
+  presets: number[]
+  format: (v: number) => string
+  onChange: (v: number) => void
+  sel: React.CSSProperties
+  min?: number
+  // Keeps the unit visible next to the custom input once the dropdown's own
+  // formatted option text ("≥10% days missed") is no longer on screen.
+  suffix?: string
+}) {
+  const [customMode, setCustomMode] = useState(!presets.includes(value))
+  if (customMode) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <input
+          type="number"
+          style={{ ...sel, minWidth: 70, width: 70 }}
+          value={value}
+          min={min}
+          onChange={e => onChange(Number(e.target.value))}
+        />
+        {suffix && <span style={{ fontSize: 12, color: '#2A3B7C' }}>{suffix}</span>}
+        <button
+          type="button"
+          onClick={() => { setCustomMode(false); onChange(presets[0]) }}
+          style={{ fontSize: 11, color: '#7a89b8', background: 'none', border: 'none', cursor: 'pointer', padding: 0, textDecoration: 'underline' }}
+        >
+          Use preset
+        </button>
+      </div>
+    )
+  }
+  return (
+    <select
+      style={sel}
+      value={value}
+      onChange={e => {
+        if (e.target.value === 'other') { setCustomMode(true); return }
+        onChange(Number(e.target.value))
+      }}
+    >
+      {presets.map(v => <option key={v} value={v}>{format(v)}</option>)}
+      <option value="other">Other…</option>
+    </select>
+  )
+}
+
 function SignalRow({
   signal, threshold, columnUniques, onChange, onToggleValue,
 }: {
@@ -127,10 +181,16 @@ function SignalRow({
   if (signal.type === 'rate' || signal.type === 'days') {
     return (
       <div style={rowSt}>
-        <span style={{ fontSize: 12, color: '#2A3B7C' }}>{signal.column} — missed</span>
-        <select style={sel} value={threshold.pct} onChange={e => onChange({ pct: Number(e.target.value) })}>
-          {[5, 10, 15, 20].map(v => <option key={v} value={v}>≥{v}% days</option>)}
-        </select>
+        <span style={{ fontSize: 12, color: '#2A3B7C' }}>{signal.column}</span>
+        <PresetOrOther
+          value={threshold.pct ?? 10}
+          presets={[5, 10, 15, 20]}
+          format={v => `≥${v}% days missed`}
+          onChange={v => onChange({ pct: v })}
+          sel={sel}
+          min={1}
+          suffix="% days missed"
+        />
       </div>
     )
   }
@@ -138,14 +198,24 @@ function SignalRow({
     return (
       <div style={rowSt}>
         <span style={{ fontSize: 12, color: '#2A3B7C' }}>{signal.column}</span>
-        <select style={sel} value={threshold.min} onChange={e => onChange({ min: Number(e.target.value) })}>
-          {[1, 2, 3].map(v => <option key={v} value={v}>≥{v}</option>)}
-        </select>
+        <PresetOrOther
+          value={threshold.min ?? 1}
+          presets={[1, 2, 3]}
+          format={v => `≥${v}`}
+          onChange={v => onChange({ min: v })}
+          sel={sel}
+          min={1}
+        />
       </div>
     )
   }
   if (signal.type === 'category') {
-    const options = columnUniques?.[signal.column] ?? signal.values ?? []
+    // Prefer the sourceFile-scoped lookup — two sheets in a multi-tab upload
+    // can share a column name (e.g. both have a "Status" column), so the
+    // bare-name lookup alone can return the wrong sheet's values. Bare name
+    // stays as a fallback for older single-sheet flows where uniques were
+    // never scoped.
+    const options = columnUniques?.[signalKey(signal)] ?? columnUniques?.[signal.column] ?? signal.values ?? []
     return (
       <div>
         <div style={{ fontSize: 11, color: '#8a9bb8', marginBottom: 4 }}>{signal.column} — which values count?</div>
@@ -159,9 +229,14 @@ function SignalRow({
         </div>
         <div style={{ ...rowSt }}>
           <span style={{ fontSize: 12, color: '#2A3B7C' }}>Flag with</span>
-          <select style={sel} value={threshold.min} onChange={e => onChange({ min: Number(e.target.value) })}>
-            {[1, 2, 3].map(v => <option key={v} value={v}>≥{v} of these</option>)}
-          </select>
+          <PresetOrOther
+            value={threshold.min ?? 1}
+            presets={[1, 2, 3]}
+            format={v => `≥${v} of these`}
+            onChange={v => onChange({ min: v })}
+            sel={sel}
+            min={1}
+          />
         </div>
       </div>
     )
@@ -170,9 +245,14 @@ function SignalRow({
     return (
       <div style={rowSt}>
         <span style={{ fontSize: 12, color: '#2A3B7C' }}>{signal.column} — below</span>
-        <select style={sel} value={threshold.grade} onChange={e => onChange({ grade: Number(e.target.value) })}>
-          {[50, 60, 65, 70].map(v => <option key={v} value={v}>{v}</option>)}
-        </select>
+        <PresetOrOther
+          value={threshold.grade ?? 60}
+          presets={[50, 60, 65, 70]}
+          format={v => `${v}`}
+          onChange={v => onChange({ grade: v })}
+          sel={sel}
+          min={0}
+        />
       </div>
     )
   }

@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Sidebar admin-gating walkthrough</title>
+<style>
+  :root {
+    --navy: #2A3B7C;
+    --teal: #3E94A5;
+    --muted: #7a89b8;
+    --muted-2: #8a9bb8;
+    --border: #e4e9f2;
+    --border-soft: #f0f3fa;
+    --card-bg: #ffffff;
+    --row-bg: #f7f9fc;
+    --bg: #f5f7fb;
+    --req-bg: #fffbea;
+    --req-border: #f3e2a9;
+    --req-text: #8a6d1d;
+    --sidebar-bg: #fbfcfe;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --navy: #c3cdfa; --teal: #7fd4e3; --muted: #9aa6d6; --muted-2: #8e99c2;
+      --border: #30344a; --border-soft: #2a2e42; --card-bg: #1a1d2b; --row-bg: #202333;
+      --bg: #11131d; --req-bg: #2a2512; --req-border: #4a3f1a; --req-text: #e3c96a;
+      --sidebar-bg: #16182400;
+      --sidebar-bg: #161824;
+    }
+  }
+  :root[data-theme="dark"] {
+    --navy: #c3cdfa; --teal: #7fd4e3; --muted: #9aa6d6; --muted-2: #8e99c2;
+    --border: #30344a; --border-soft: #2a2e42; --card-bg: #1a1d2b; --row-bg: #202333;
+    --bg: #11131d; --req-bg: #2a2512; --req-border: #4a3f1a; --req-text: #e3c96a;
+    --sidebar-bg: #161824;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--navy);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    padding: 16px;
+  }
+  .wrap { max-width: 680px; margin: 0 auto; }
+  h1 { font-size: 16px; font-weight: 700; margin: 4px 0 2px; }
+  .sub { font-size: 12.5px; color: var(--muted); margin: 0 0 16px; line-height: 1.5; }
+  .req-tag {
+    display: inline-block; font-size: 10px; font-weight: 700; letter-spacing: .03em;
+    text-transform: uppercase; color: var(--req-text); background: var(--req-bg);
+    border: 1px solid var(--req-border); border-radius: 6px; padding: 2px 7px; margin-bottom: 6px;
+  }
+
+  .role-toggle { display: flex; gap: 6px; margin-bottom: 14px; }
+  .role-btn {
+    padding: 7px 16px; border-radius: 20px; border: 1.5px solid var(--border);
+    background: var(--card-bg); color: var(--muted); font-size: 12.5px; font-weight: 600;
+    cursor: pointer; font-family: inherit;
+  }
+  .role-btn.active { border-color: var(--teal); background: #eef8fb; color: #1b6070; }
+
+  .shell { display: flex; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; min-height: 380px; box-shadow: 0 1px 3px rgba(20,30,60,0.06); }
+  .sidebar { width: 200px; background: var(--sidebar-bg); border-right: 1px solid var(--border); padding: 14px 10px; flex-shrink: 0; }
+  .sb-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted-2); padding: 10px 8px 4px; }
+  .nav-item {
+    display: flex; align-items: center; gap: 8px; padding: 7px 8px; border-radius: 7px;
+    font-size: 12.5px; color: var(--navy); cursor: pointer; margin-bottom: 1px;
+  }
+  .nav-item:hover { background: var(--row-bg); }
+  .nav-item.active { background: #eef8fb; color: #1b6070; font-weight: 600; }
+  .nav-item svg { flex-shrink: 0; opacity: .75; }
+  .nav-item.removed { opacity: 0.35; text-decoration: line-through; cursor: default; }
+  .nav-item.removed:hover { background: none; }
+
+  .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+  .main-head { padding: 14px 18px; border-bottom: 1px solid var(--border); background: var(--row-bg); }
+  .main-head h2 { font-size: 14px; font-weight: 700; margin: 0; }
+  .main-head p { font-size: 11.5px; color: var(--muted); margin: 3px 0 0; }
+  .main-body { flex: 1; padding: 16px 18px; overflow: auto; }
+
+  .file-row {
+    display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
+    border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; margin-bottom: 10px;
+  }
+  .file-name { font-weight: 600; font-size: 13px; margin-bottom: 4px; }
+  .file-meta { font-size: 11px; color: var(--muted); }
+  .dl-link { font-size: 12px; font-weight: 600; color: var(--teal); text-decoration: none; display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+
+  .denied { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: var(--muted); font-size: 13px; gap: 8px; text-align: center; padding: 20px; }
+
+  .type-badge {
+    display: inline-flex; align-items: center; font-size: 10px; font-weight: 700;
+    padding: 2px 8px; border-radius: 10px; text-transform: uppercase; letter-spacing: .03em;
+    margin-bottom: 5px;
+  }
+  .type-badge.plan   { background: #eef0f8; color: var(--navy); }
+  .type-badge.agenda { background: #fdf3e1; color: #7a5c10; }
+  .type-badge.report { background: #eef8fb; color: #1b6070; }
+  .filter-row { display: flex; gap: 6px; margin-bottom: 14px; }
+  .filter-pill {
+    padding: 4px 11px; border-radius: 14px; border: 1px solid var(--border); background: var(--card-bg);
+    color: var(--muted); font-size: 11.5px; font-weight: 600; cursor: pointer; font-family: inherit;
+  }
+  .filter-pill.active { border-color: var(--teal); background: #eef8fb; color: #1b6070; }
+
+  .callout {
+    margin-top: 16px; font-size: 11.5px; color: var(--muted); line-height: 1.6;
+    background: var(--card-bg); border: 1px dashed var(--border); border-radius: 10px; padding: 10px 12px;
+  }
+  .callout b { color: var(--navy); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Sidebar — admin gating, All Documents &amp; combined Actions</h1>
+  <p class="sub">Toggle between Teacher and Admin to see what each role actually sees in the sidebar. Click a nav item to see what it opens.</p>
+
+  <span class="req-tag">Requirement — KB / Pending approval are admin-only; All Documents shows real uploads; My Actions is one combined list, not 3 sub-tabs</span>
+
+  <div class="role-toggle">
+    <button type="button" class="role-btn active" id="btn-teacher" onclick="setRole('teacher')">👤 Viewing as Teacher</button>
+    <button type="button" class="role-btn" id="btn-admin" onclick="setRole('admin')">🛡️ Viewing as Admin</button>
+  </div>
+
+  <div class="shell">
+    <div class="sidebar">
+      <div class="sb-label">Workspace</div>
+      <div class="nav-item">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="13" height="13"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        Conversations
+      </div>
+      <div class="sb-label">My Library</div>
+      <div id="nav-kb"></div>
+      <div class="nav-item active" onclick="selectView('all')" id="nav-all">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="13" height="13"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        All documents
+      </div>
+      <div id="nav-pending"></div>
+      <div class="sb-label">My Actions</div>
+      <div class="nav-item" onclick="selectView('actions')" id="nav-actions">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="13" height="13"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+        My actions
+      </div>
+    </div>
+    <div class="main">
+      <div class="main-head" id="main-head"></div>
+      <div class="main-body" id="main-body"></div>
+    </div>
+  </div>
+
+  <div class="callout">
+    <b>What to check:</b><br>
+    • Switch to <b>Teacher</b> — "Knowledge base" and "Pending approval" disappear from the sidebar entirely, not just greyed out. "All documents" stays, since that's a general view, not an admin tool.<br>
+    • Switch to <b>Admin</b> — both reappear.<br>
+    • Click <b>All documents</b> (works in both roles) — it now shows real uploaded files (gradebook CSVs, PDFs) with filename, type, which conversation they came from, and a working download link — not the old mislabeled duplicate of "Action plans."<br>
+    • This mockup also shows the defense-in-depth from the real code: even if a teacher somehow lands on the Knowledge Base view directly (not just via the hidden nav link), they'd see an access-denied style message, not the real admin tool.<br>
+    • Click <b>My actions</b> — there's now just <b>one</b> sidebar entry instead of three ("Action plans" / "Meeting Agendas" / "Reports" used to each be their own sub-tab). Inside, everything shows together in one chronological list, each item tagged with a small colored badge (Plan / Agenda / Report) so you can still tell them apart — and filter pills at the top let you narrow to just one type without needing a separate nav item for it.
+  </div>
+</div>
+
+<script>
+let role = 'teacher';
+let currentView = 'all';
+let actionsFilter = 'all';
+
+const UPLOADED_FILES = [
+  { filename: 'Fall Gradebook.csv', type: 'CSV', conversation: 'Q1 Risk Review', date: 'Oct 2, 2026' },
+  { filename: 'IEP Accommodations.pdf', type: 'PDF', conversation: 'IEP meeting prep', date: 'Sep 28, 2026' },
+  { filename: 'Spring Roster.xlsx', type: 'XLSX', conversation: 'Spring enrollment check', date: 'Sep 11, 2026' },
+];
+
+const ACTIONS = [
+  { kind: 'plan',   label: 'Plan',   title: 'Chronic Absence Tier 2 Plan', date: 'Oct 5, 2026' },
+  { kind: 'report', label: 'Report', title: 'Q1 Risk Overview — Family Letter', date: 'Oct 3, 2026' },
+  { kind: 'agenda', label: 'Agenda', title: 'MTSS Meeting — Oct 7', date: 'Oct 1, 2026' },
+  { kind: 'plan',   label: 'Plan',   title: '8th Grade Math Intervention', date: 'Sep 29, 2026' },
+  { kind: 'report', label: 'Report', title: 'Attendance Equity Summary', date: 'Sep 20, 2026' },
+];
+
+function navItemHtml(id, label, iconPath, active) {
+  return `
+    <div class="nav-item ${active ? 'active' : ''}" onclick="selectView('${id}')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="13" height="13">${iconPath}</svg>
+      ${label}
+    </div>
+  `;
+}
+
+function renderSidebar() {
+  const isAdmin = role === 'admin';
+  document.getElementById('nav-kb').innerHTML = isAdmin
+    ? navItemHtml('kb', 'Knowledge base', '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>', currentView === 'kb')
+    : '';
+  document.getElementById('nav-pending').innerHTML = isAdmin
+    ? navItemHtml('pending', 'Pending approval', '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>', currentView === 'pending')
+    : '';
+  document.getElementById('nav-all').className = 'nav-item' + (currentView === 'all' ? ' active' : '');
+  document.getElementById('nav-actions').className = 'nav-item' + (currentView === 'actions' ? ' active' : '');
+}
+
+function setRole(r) {
+  role = r;
+  document.getElementById('btn-teacher').className = 'role-btn' + (r === 'teacher' ? ' active' : '');
+  document.getElementById('btn-admin').className = 'role-btn' + (r === 'admin' ? ' active' : '');
+  // If a teacher was looking at an admin-only view and switches role, bounce back to All documents
+  if (role === 'teacher' && (currentView === 'kb' || currentView === 'pending')) currentView = 'all';
+  renderSidebar();
+  renderMain();
+}
+
+function selectView(v) {
+  currentView = v;
+  renderSidebar();
+  renderMain();
+}
+
+function renderMain() {
+  const head = document.getElementById('main-head');
+  const body = document.getElementById('main-body');
+  const isAdmin = role === 'admin';
+
+  if (currentView === 'kb') {
+    if (!isAdmin) {
+      head.innerHTML = `<h2>Knowledge base</h2>`;
+      body.innerHTML = `<div class="denied">🚫 Not available for your account<br><span style="font-size:11px">This falls through to a safe empty state in the real app — the admin tool itself never renders for a non-admin, even if they land here directly.</span></div>`;
+      return;
+    }
+    head.innerHTML = `<h2>Knowledge base</h2><p>Admin-only document curation (upload, tag, approve)</p>`;
+    body.innerHTML = `<div style="color:var(--muted);font-size:12.5px">(Admin KB management tool renders here)</div>`;
+    return;
+  }
+
+  if (currentView === 'pending') {
+    if (!isAdmin) {
+      head.innerHTML = `<h2>Pending approval</h2>`;
+      body.innerHTML = `<div class="denied">🚫 Not available for your account</div>`;
+      return;
+    }
+    head.innerHTML = `<h2>Pending approval</h2><p>KB documents awaiting admin approval</p>`;
+    body.innerHTML = `<div style="color:var(--muted);font-size:12.5px">Pending approval coming soon</div>`;
+    return;
+  }
+
+  if (currentView === 'actions') {
+    head.innerHTML = `<h2>My Actions</h2><p>Action plans, meeting agendas, and reports — one combined list instead of three separate tabs.</p>`;
+    const filtered = actionsFilter === 'all' ? ACTIONS : ACTIONS.filter(a => a.kind === actionsFilter);
+    const pills = [
+      { key: 'all', label: 'All' },
+      { key: 'plan', label: 'Plans' },
+      { key: 'agenda', label: 'Agendas' },
+      { key: 'report', label: 'Reports' },
+    ];
+    body.innerHTML = `
+      <div class="filter-row">
+        ${pills.map(p => `<button type="button" class="filter-pill ${actionsFilter === p.key ? 'active' : ''}" onclick="setActionsFilter('${p.key}')">${p.label}</button>`).join('')}
+      </div>
+      ${filtered.map(a => `
+        <div class="file-row">
+          <div>
+            <div class="type-badge ${a.kind}">${a.label}</div>
+            <div class="file-name">${a.title}</div>
+            <div class="file-meta">${a.date}</div>
+          </div>
+        </div>
+      `).join('')}
+    `;
+    return;
+  }
+
+  // All documents — same for both roles
+  head.innerHTML = `<h2>All Documents</h2><p>Every file you've uploaded to your own conversations.</p>`;
+  body.innerHTML = UPLOADED_FILES.map(f => `
+    <div class="file-row">
+      <div>
+        <div class="file-name">${f.filename}</div>
+        <div class="file-meta">${f.type} · from "${f.conversation}" · ${f.date}</div>
+      </div>
+      <a class="dl-link" href="#" onclick="return false">↓ Download</a>
+    </div>
+  `).join('');
+}
+
+function setActionsFilter(k) {
+  actionsFilter = k;
+  renderMain();
+}
+
+renderSidebar();
+renderMain();
+</script>
+</body>
+</html>

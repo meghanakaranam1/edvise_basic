@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
 
   const query = supabase
     .from('kb_documents')
-    .select('id, filename, scope, status, tags, file_type, category, created_at, uploaded_by')
+    .select('id, filename, scope, status, tags, file_type, category, created_at, uploaded_by, school_name')
     .order('created_at', { ascending: false })
 
   // Non-admins only see their own uploads

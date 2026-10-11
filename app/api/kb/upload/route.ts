@@ -97,10 +97,16 @@ export async function POST(req: NextRequest) {
   const isAdmin = user.email === ADMIN_EMAIL
   const status = (scope === 'global' && isAdmin) ? 'approved' : 'pending'
 
+  // "school"-scoped docs are tagged with the uploader's own school so
+  // search can actually isolate them per school (previously always null —
+  // every school's uploads were silently visible to every other school).
+  // "global" docs intentionally have no single owning school.
+  const schoolName = scope === 'school' ? (user.user_metadata?.school_name ?? null) : null
+
   const { data, error } = await supabase.from('kb_documents').insert({
     filename,
     scope,
-    school_name: null,
+    school_name: schoolName,
     status,
     anthropic_file_id: anthropicFileId,
     tags,
@@ -110,5 +116,19 @@ export async function POST(req: NextRequest) {
   }).select().single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  // Anthropic's Files API does not serve back the original bytes for this
+  // account (every upload comes back `downloadable: false`, confirmed
+  // independent of file age/type) — so a copy is kept in Supabase Storage,
+  // keyed by this document's own row id, purely so it can actually be
+  // downloaded again later (see /api/kb/download). Awaited, not
+  // fire-and-forget — a serverless function can be frozen the instant it
+  // returns a response.
+  const mimeType = ext === 'pdf' ? 'application/pdf' : ext === 'csv' ? 'text/csv' : 'text/plain'
+  const { error: storageError } = await supabase.storage
+    .from('documents')
+    .upload(`kb/${data.id}`, buf, { contentType: mimeType, upsert: true })
+  if (storageError) console.error('Storage copy failed (non-fatal — Claude still has the file):', storageError.message)
+
   return NextResponse.json({ document: data })
 }

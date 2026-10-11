@@ -11,7 +11,7 @@ type ContentBlock = { type: string; [key: string]: unknown };
 type SimpleMessage = { role: "user" | "assistant"; content: string | ContentBlock[] };
 
 export async function POST(req: NextRequest) {
-  const { messages, fileId, fileIds, pdfFiles, thresholdPrompt, columnMapping, schoolContext, kbScope }: {
+  const { messages, fileId, fileIds, pdfFiles, thresholdPrompt, columnMapping, schoolContext, kbScope, userSchool }: {
     messages: SimpleMessage[];
     fileId?: string;
     // Multiple related-but-unmerged sheets (e.g. a roster plus a separate
@@ -25,6 +25,9 @@ export async function POST(req: NextRequest) {
     columnMapping?: Record<string, string>;
     schoolContext?: string;
     kbScope?: string;
+    // The requesting teacher's own school (from their account) — scopes
+    // "school"-tagged KB results to just their school, not every school's.
+    userSchool?: string;
   } = await req.json();
   const hasDataFiles = !!fileId || !!fileIds?.length;
 
@@ -50,7 +53,7 @@ export async function POST(req: NextRequest) {
   const [kbDocs, webResult] = isChatMode
     ? [[], { summary: '', sources: [] as { title: string; url: string }[] }]
     : await Promise.all([
-        kbScopes.length ? searchKB(lastUserMsg, kbScopes, 4) : Promise.resolve([]),
+        kbScopes.length ? searchKB(lastUserMsg, kbScopes, 4, userSchool) : Promise.resolve([]),
         useWeb ? prefetchWeb(lastUserMsg) : Promise.resolve({ summary: '', sources: [] as { title: string; url: string }[] }),
       ]);
   const webSources = webResult.sources;
@@ -177,33 +180,21 @@ For the three standard analysis sections, output <!--CARD:--> markers INSTEAD of
 
 ### Card 1 — School-wide risk overview
 Compute: total students, any_flag (union — students with AT LEAST 1 flag), no_flag, each indicator count/pct, two_or_more (students with AT LEAST 2 flags — inclusive of all_three; compute as: students flagged on 2 or more indicators), all_three (students with ALL 3 flags), and 3 pairwise combos (students with EXACTLY 2 of that specific pair and NOT the third flag — these three counts sum to two_or_more minus all_three). Output on ONE line:
-<!--CARD:{"type":"risk_overview","data":{"total":4651,"any_flag":{"count":1573,"pct":33.8},"no_flag":{"count":3078,"pct":66.2},"indicators":[{"name":"Academic Failure","count":1288,"pct":27.7,"color":"#c53030"},{"name":"Chronic Absence","count":477,"pct":10.3,"color":"#3E94A5"},{"name":"Suspensions","count":404,"pct":8.7,"color":"#B45309"}],"two_or_more":{"count":477,"pct":10.3},"all_three":{"count":119,"pct":2.6},"combinations":[{"label":"Absence + Academic","count":188,"pct":4.0},{"label":"Absence + Behavior","count":22,"pct":0.5},{"label":"Behavior + Academic","count":148,"pct":3.2}]}}-->
+<!--CARD:{"type":"risk_overview","data":{"total":4651,"any_flag":{"count":1573,"pct":33.8},"no_flag":{"count":3078,"pct":66.2},"indicators":[{"name":"Academic Failure","count":1288,"pct":27.7,"color":"#c53030","sub":[{"name":"Math Grade — below 60","count":724,"pct":15.6},{"name":"English Grade — below 60","count":681,"pct":14.6}]},{"name":"Chronic Absence","count":477,"pct":10.3,"color":"#3E94A5"},{"name":"Suspensions","count":404,"pct":8.7,"color":"#B45309"}],"two_or_more":{"count":477,"pct":10.3},"all_three":{"count":119,"pct":2.6},"combinations":[{"label":"Absence + Academic","count":188,"pct":4.0},{"label":"Absence + Behavior","count":22,"pct":0.5},{"label":"Behavior + Academic","count":148,"pct":3.2}]}}-->
 
 Replace ALL example values with actual computed numbers. Order indicators highest to lowest count. Pct to 1 decimal.
 
+**"sub" on an indicator**: include it ONLY when that category's criteria has MORE THAN ONE threshold signal (e.g. both a Math Grade and an English Grade column were each given their own threshold — see the criteria established above). Each sub entry is one signal's own count/pct, computed independently against just that column (e.g. how many students are below the Math cutoff, regardless of English). The parent indicator's own count/pct stays the UNION of all its signals (a student flagged on both only counts once) — do NOT sum the sub entries to get the parent's count, and do NOT expect them to add up to it; a student failing both subjects makes the sub entries sum to MORE than the parent, which is correct, not an error. If a category has only one signal, omit "sub" entirely — don't include a single-item array.
+
 ### Card 2 — Grade breakdown
-Compute the same metrics as Card 1, per grade. Output on ONE line (include ALL grade levels):
-<!--CARD:{"type":"grade_comparison","data":{"grades":[{"label":"Grade 6","n":2315,"any_flag":{"count":697,"pct":30.1},"no_flag":{"count":1618,"pct":69.9},"indicators":[{"name":"Academic Failure","count":552,"pct":23.8,"color":"#c53030"},{"name":"Chronic Absence","count":212,"pct":9.2,"color":"#3E94A5"},{"name":"Suspensions","count":166,"pct":7.2,"color":"#B45309"}],"two_or_more":{"count":155,"pct":6.7},"all_three":{"count":39,"pct":1.7},"combinations":[{"label":"Absence + Academic","count":88,"pct":3.8},{"label":"Absence + Behavior","count":9,"pct":0.4},{"label":"Behavior + Academic","count":58,"pct":2.5}]},{"label":"Grade 7","n":2336,...same structure...}]}}-->
+Compute the same metrics as Card 1, per grade — including "sub" on an indicator under the same rule (more than one signal for that category, computed within that grade only). Output on ONE line (include ALL grade levels):
+<!--CARD:{"type":"grade_comparison","data":{"grades":[{"label":"Grade 6","n":2315,"any_flag":{"count":697,"pct":30.1},"no_flag":{"count":1618,"pct":69.9},"indicators":[{"name":"Academic Failure","count":552,"pct":23.8,"color":"#c53030","sub":[{"name":"Math Grade — below 60","count":312,"pct":13.5},{"name":"English Grade — below 60","count":289,"pct":12.5}]},{"name":"Chronic Absence","count":212,"pct":9.2,"color":"#3E94A5"},{"name":"Suspensions","count":166,"pct":7.2,"color":"#B45309"}],"two_or_more":{"count":155,"pct":6.7},"all_three":{"count":39,"pct":1.7},"combinations":[{"label":"Absence + Academic","count":88,"pct":3.8},{"label":"Absence + Behavior","count":9,"pct":0.4},{"label":"Behavior + Academic","count":58,"pct":2.5}]},{"label":"Grade 7","n":2336,...same structure...}]}}-->
 
 ### Card 3 — Subgroup analysis
-Per group: any_flag_pct (% with any flag), each indicator count/pct, 3 pairwise combos (EXACTLY 2 of that specific pair — NOT the third flag), all_three. Use short combo labels: "Abs + Fail", "Sus + Fail", "Abs + Sus". Output on ONE line:
-<!--CARD:{"type":"subgroup","data":{"total":4651,"categories":[{"tab":"Race/Ethnicity","equity_note":"One sentence equity finding","groups":[{"name":"White","n":1219,"any_flag_pct":17.3,"indicators":[{"name":"Academic Failure","count":124,"pct":10.2,"color":"#c53030"},{"name":"Chronic Absence","count":91,"pct":7.5,"color":"#3E94A5"},{"name":"Suspensions","count":55,"pct":4.5,"color":"#B45309"}],"combinations":[{"label":"Abs + Fail","count":20,"pct":1.6},{"label":"Sus + Fail","count":15,"pct":1.2},{"label":"Abs + Sus","count":6,"pct":0.5}],"all_three":{"count":9,"pct":0.7}},{"name":"Black","n":169,...},{"name":"Hispanic","n":2407,...}]},{"tab":"Gender","groups":[...]},{"tab":"SPED","groups":[...]},{"tab":"ELL","groups":[...]}]}}-->
+Per group: any_flag_pct (% with any flag), each indicator count/pct (with "sub" under the same rule as Card 1, computed within that group only), 3 pairwise combos (EXACTLY 2 of that specific pair — NOT the third flag), all_three. Use short combo labels: "Abs + Fail", "Sus + Fail", "Abs + Sus". Output on ONE line:
+<!--CARD:{"type":"subgroup","data":{"total":4651,"categories":[{"tab":"Race/Ethnicity","equity_note":"One sentence equity finding","groups":[{"name":"White","n":1219,"any_flag_pct":17.3,"indicators":[{"name":"Academic Failure","count":124,"pct":10.2,"color":"#c53030","sub":[{"name":"Math Grade — below 60","count":71,"pct":5.8},{"name":"English Grade — below 60","count":65,"pct":5.3}]},{"name":"Chronic Absence","count":91,"pct":7.5,"color":"#3E94A5"},{"name":"Suspensions","count":55,"pct":4.5,"color":"#B45309"}],"combinations":[{"label":"Abs + Fail","count":20,"pct":1.6},{"label":"Sus + Fail","count":15,"pct":1.2},{"label":"Abs + Sus","count":6,"pct":0.5}],"all_three":{"count":9,"pct":0.7}},{"name":"Black","n":169,...},{"name":"Hispanic","n":2407,...}]},{"tab":"Gender","groups":[...]},{"tab":"SPED","groups":[...]},{"tab":"ELL","groups":[...]}]}}-->
 
 equity_note is one sentence about the most notable equity gap in that tab. Include tabs for all demographic groups available in the data.
-
-### Card 4 — Longitudinal overview (only when asked, e.g. "Show me the longitudinal trend across quarters")
-A multi-tab spreadsheet is NOT automatically longitudinal — only build this card for a category whose threshold column genuinely has sibling columns representing the SAME measurement at different points in time (e.g. "ADA Q1", "ADA Q2", "ADA Q3", "ADA Q4", or repeated snapshot dates). Do NOT treat two DIFFERENT kinds of signal in one category (e.g. a tardy column and a separate suspension column) as time points — those are parallel signals, not a time series, and stay in "static" below even if the category itself has multiple threshold signals.
-
-The request may arrive in one of two forms:
-1. **From the Longitudinal setup wizard** — the message names the exact variable(s) and their raw column names in parentheses (e.g. "Attendance (ADA as of 4/4, Last Year's ADA)"), and optionally which groups to compare (e.g. "Hispanic students, Whole School only"). Use exactly those columns and groups — don't re-derive or second-guess them. Map a group label like "Hispanic students" to whichever real value in the race/ethnicity column corresponds to it, the same way you already do for subgroup analysis. If groups weren't asked for (or the answer was "Whole School only"), only include a single "Whole School" group per variable.
-2. **The plain stage-button prompt with no wizard answers** — inspect the actual file(s) yourself for genuine multi-time-point siblings (column names containing quarter/term numbers, or multiple dated snapshots of the same metric) and compute whole-school-only, no groups.
-
-If NO category has a genuine multi-time-point signal, do not output this card at all — just tell the teacher in one sentence that this data doesn't have more than one time point for any tracked indicator, and stop there.
-
-Apply the EXACT SAME threshold definition already established for a category (from the criteria above) to each time point's column, computing a count/pct per time point per group. Any category that does NOT have multiple time points still gets computed once, whole-school (same as the risk overview), and goes in "static" — so the teacher sees the full picture, not just what's trackable over time. Output on ONE line:
-<!--CARD:{"type":"longitudinal_overview","data":{"total":253,"quarters":[{"label":"Q1","date":"Sep-Oct"},{"label":"Q2","date":"Nov-Jan"}],"variables":[{"name":"Chronic Absence","unit":"%","groups":[{"key":"whole","label":"Whole School","color":"#2A3B7C","values":[12.6,16.2],"counts":[32,41]},{"key":"hispanic","label":"Hispanic","color":"#DB2777","values":[15.8,22.1],"counts":[10,14]}]}],"static":[{"name":"Behavior","pct":17.8,"count":45},{"name":"Course Failure","pct":36.8,"count":93}]}}-->
-
-quarters/date labels should reflect whatever the actual column names or a reasonable inference of the time periods are — don't invent date ranges the data doesn't support; a plain "Q1"/"Q2" or the actual column name is fine. Every group's values/counts arrays must be the same length as quarters, in the same order. "Whole School" must always be included first in every variable's groups array, even when other groups are also requested, so there's a baseline to compare against. Use these colors for groups when they apply, otherwise pick any distinct, readable hex: Whole School #2A3B7C, Hispanic #DB2777, Black #7C3AED, White #0EA5E9, Male #059669, Female #D97706, ELL #DC2626, Special Education #4B5563.
 
 ### Roster / export
 CRITICAL: When asked to export, list, or show a roster of students you MUST use code execution to produce real data from the file. Never describe what a roster would contain, never invent counts or summaries, never use <!--EXPORT:--> or any other marker format.
@@ -268,13 +259,12 @@ Match the questions to the type of response just given:
 
 ## SEL / survey scale analysis
 When the teacher asks about SEL, wellbeing, engagement, or connectedness, use the column mapping to identify SEL scale columns. Run Python to:
-1. Compute school-wide mean per scale (school_avg), rounded to 2 decimal places
-2. Define risk groups using the same thresholds as above: Chronically Absent (absence flag), Suspended (suspension flag), Failing Courses (academic failure flag), On Track (no flags at all)
-3. For each group: mean per scale and average across all SEL scales (avg_score), both rounded to 2 decimal places
-4. Detect the actual scale range: scale_min = min value across all SEL columns, scale_max = max value
+1. Define groups using the same ABC thresholds as above: Chronically Absent (absence flag), Suspended (suspension flag), Failing Courses (academic failure flag), and **"On Track"** — students with NO ABC flags at all (the exact same definition as "no_flag" in the risk overview card). "On Track" is REQUIRED every time — it's the comparison baseline the card displays against, replacing a plain school-wide average, so SEL scores can be read against actual risk status rather than an undifferentiated number. Label it exactly "On Track" (the card matches on that exact label).
+2. For each group (including On Track): mean per scale and average across all SEL scales (avg_score), both rounded to 2 decimal places
+3. Detect the actual scale range: scale_min = min value across all SEL columns, scale_max = max value
 
 Output on ONE line:
-<!--CARD:{"type":"sel_overview","data":{"n_total":4651,"scale_min":1,"scale_max":5,"scales":["Academic Engagement","School Connectedness","Adult Support","Academic Pressure","Caring Adults"],"school_avg":{"Academic Engagement":3.7,"School Connectedness":3.8,"Adult Support":3.6,"Academic Pressure":3.9,"Caring Adults":3.6},"groups":[{"label":"Chronically Absent","n":349,"avg_score":3.5,"scores":{"Academic Engagement":3.4,"School Connectedness":3.6,"Adult Support":3.5,"Academic Pressure":3.6,"Caring Adults":3.4}},{"label":"Suspended","n":324,"avg_score":3.4,"scores":{"Academic Engagement":3.3,"School Connectedness":3.5,"Adult Support":3.4,"Academic Pressure":3.5,"Caring Adults":3.3}},{"label":"Failing Courses","n":1118,"avg_score":3.6,"scores":{"Academic Engagement":3.5,"School Connectedness":3.7,"Adult Support":3.5,"Academic Pressure":3.7,"Caring Adults":3.5}},{"label":"On Track","n":2816,"avg_score":3.9,"scores":{"Academic Engagement":3.9,"School Connectedness":4.0,"Adult Support":3.8,"Academic Pressure":4.1,"Caring Adults":3.8}}]}}-->
+<!--CARD:{"type":"sel_overview","data":{"n_total":4651,"scale_min":1,"scale_max":5,"scales":["Academic Engagement","School Connectedness","Adult Support","Academic Pressure","Caring Adults"],"groups":[{"label":"Chronically Absent","n":349,"avg_score":3.5,"scores":{"Academic Engagement":3.4,"School Connectedness":3.6,"Adult Support":3.5,"Academic Pressure":3.6,"Caring Adults":3.4}},{"label":"Suspended","n":324,"avg_score":3.4,"scores":{"Academic Engagement":3.3,"School Connectedness":3.5,"Adult Support":3.4,"Academic Pressure":3.5,"Caring Adults":3.3}},{"label":"Failing Courses","n":1118,"avg_score":3.6,"scores":{"Academic Engagement":3.5,"School Connectedness":3.7,"Adult Support":3.5,"Academic Pressure":3.7,"Caring Adults":3.5}},{"label":"On Track","n":2816,"avg_score":3.9,"scores":{"Academic Engagement":3.9,"School Connectedness":4.0,"Adult Support":3.8,"Academic Pressure":4.1,"Caring Adults":3.8}}]}}-->
 
 Replace ALL example values with actual computed numbers. Include every SEL scale in the scales array.
 
@@ -287,10 +277,10 @@ When asked to brainstorm interventions (message starting with "Please brainstorm
 - Cite sources inline [1][2] etc.
 
 ## Intervention & strategy questions asked mid-analysis
-When the teacher asks about interventions, strategies, supports, engagement, school programs, mentorship, tutoring, action plans, or meeting agendas (NOT a data question), do NOT use code_execution. Instead:
-1. Ask 1–2 ask_clarifying_question MCQs if important context is missing (grade, tier, specific challenge) — NEVER skip MCQs on a vague first request
-2. Call search_strategies with a targeted query using context from the conversation
-3. Write a detailed cited response — or for action plan/agenda requests, call update_plan to send it to the panel`
+When the teacher asks about interventions, strategies, supports, engagement, school programs, mentorship, tutoring, action plans, meeting agendas, or reports (NOT a data question), do NOT use code_execution. Instead:
+1. Ask 1–2 ask_clarifying_question MCQs if important context is missing (grade, tier, specific challenge) — NEVER skip MCQs on a vague first request. For report requests specifically, these are the content/format questions described below, not the intervention-context questions. For action_plan/agenda requests, ALSO ask the mandatory format question described below (in addition to, not instead of, the context MCQs).
+2. Call search_strategies with a targeted query using context from the conversation — SKIP this step entirely for report requests, which don't need strategy research.
+3. Write a detailed cited response — or for action plan/agenda/report requests, call update_plan to send it to the panel`
     : `You are Edvise, a helpful assistant for teachers. Answer questions conversationally and naturally. Do not volunteer research or interventions unless the teacher explicitly asks for them.
 ${schoolContextLine ? '\n' + schoolContextLine + '\n' : ''}
 ## CRITICAL — never promise work you are not doing in this turn
@@ -316,14 +306,20 @@ Rules:
 - Ask a MINIMUM of 2 MCQs and a MAXIMUM of 3 before calling search_strategies — UNLESS the teacher already provided all context upfront or explicitly says "just search" / "skip the questions".
 - NEVER skip MCQs on a vague first request — the interactive MCQ is the core personalization experience. Even if the question seems general (e.g. "how do I start a mentorship program?"), you MUST ask MCQs first to understand the school's context.
 - Do NOT ask the same dimension twice.
+- CRITICAL — never re-ask a question you already have the answer to. Before calling ask_clarifying_question, check the conversation so far: if the teacher has already answered a question covering that same dimension (even if you'd phrase it slightly differently), do NOT ask it again — reuse their existing answer instead. This applies across the WHOLE conversation, not just the current turn, and includes the mandatory format question in Step 3 below — once a format/organization question has been asked and answered for this document, never ask another one.
+- Every ask_clarifying_question call, in every step of this workflow (context MCQs here AND the mandatory format question in Step 3), MUST include a final "Other" choice so the teacher can type a free-text answer when none of the listed choices fit.
 
 ### Step 2 — Call search_strategies (REQUIRED on EVERY intervention turn)
 After the MCQs are answered, call search_strategies with a specific, well-scoped query incorporating all gathered context. This is required not only on the first substantive turn but on EVERY SUBSEQUENT TURN while the conversation is about interventions — including follow-ups like "what about grade 5?", "tell me more", "what if they're ELL?", "any other ideas?". Re-call with the refined query every time.
 
 ### Step 3 — Write response OR send to panel
 - **For general strategy / intervention questions**: write a comprehensive, practical response citing sources inline with [N] markers. Be specific and actionable.
-- **For action plan requests** ("make me an action plan", "create an action plan", "build an action plan"): call update_plan with type="action_plan". Write a single short confirmation in chat (e.g. "Your action plan is ready in the panel!"). Do NOT write the plan content in chat.
-- **For meeting agenda requests** ("make me a meeting agenda", "create an agenda", "build an agenda"): call update_plan with type="agenda". Write a single short confirmation in chat (e.g. "Your meeting agenda is ready in the panel!"). Do NOT write the agenda content in chat.
+- **For action plan requests** ("make me an action plan", "create an action plan", "build an action plan"): there is no fixed action-plan template — the teacher defines the format themselves. The full sequence is EXACTLY: 2 context MCQs from Step 1 (no more, no fewer — do not let one of them drift into asking about format/organization, that belongs only to the step below) → search_strategies (Step 2) → exactly ONE format question → update_plan. That format question is a SEPARATE, THIRD ask_clarifying_question call, asked only once search_strategies has already run, EVERY time, even if you think you can guess the answer: question text like "How should this action plan be organized?", with choices describing genuinely different document shapes — e.g. "Numbered steps with owners (standard format)", "A narrative plan to read end-to-end", "A simple checklist", plus "Other". Once answered, call update_plan with type="action_plan" immediately — do not ask anything else first. Write a single short confirmation in chat (e.g. "Your action plan is ready in the panel!"). Do NOT write the plan content in chat.
+- **For meeting agenda requests** ("make me a meeting agenda", "create an agenda", "build an agenda"): there is no fixed agenda template — the teacher defines the format themselves. The full sequence is EXACTLY: 2 context MCQs from Step 1 (no more, no fewer — do not let one of them drift into asking about format/organization, that belongs only to the step below) → search_strategies (Step 2) → exactly ONE format question → update_plan. That format question is a SEPARATE, THIRD ask_clarifying_question call, asked only once search_strategies has already run, EVERY time, even if you think you can guess the answer: question text like "How should this agenda be organized?", with choices describing genuinely different document shapes — e.g. "Standard timed agenda (time blocks + leads)", "A simple list of discussion topics", "Open-floor/discussion-focused outline", plus "Other". Once answered, call update_plan with type="agenda" immediately — do not ask anything else first. Write a single short confirmation in chat (e.g. "Your meeting agenda is ready in the panel!"). Do NOT write the agenda content in chat.
+- **For report requests** ("make me a report", "I need something for my MTSS meeting", "write up a summary for..."): these do NOT need search_strategies — that step is for intervention research only. There is no fixed report template — the teacher defines the content and format themselves. ALWAYS ask exactly these 2 ask_clarifying_question questions before generating, one per turn, EVERY time — even if the request already seems specific or you think you can guess the answer. Never skip them, never infer them from the request instead of asking:
+  1. A **focus** question — question text like "What should this report focus on?" — choices naming a topic/subgroup/concern (e.g. "School-wide risk overview", "A specific grade level", "A specific student or small group", "Attendance trends specifically").
+  2. A **format** question — question text like "What format should this report be in?" (NOT "who is this for" — do not phrase it as an audience question). The choices must each be a document shape, not an audience label. Use choices worded like these: "Narrative write-up — full written analysis with sections", "Short plain-language letter — simple, for sharing with a family", "Bullet-point breakdown — scannable, no long paragraphs", "Themed sections — organized around specific topics you choose". Never produce choices like "Teachers", "Families", "Administrators", or "Grade-level team" for this question — those are audiences, not formats, and belong to a different question than this one.
+  Always include an "Other" choice so they can specify something not listed. Once both are answered, call update_plan with type="report". The panel generates sections matching exactly what the teacher asked for, not a preset structure. Write a single short confirmation in chat (e.g. "Your report is ready in the panel!"). Do NOT write the report content in chat.
 
 ## For everything else
 For greetings, simple factual questions, or quick clarifications that do not need evidence-based strategies, respond conversationally without calling any tool.`;
@@ -377,7 +373,7 @@ Each section must stand alone — do not cross-reference between sections. Only 
 
   // sourceMeta order must match allSources order so citation numbers [N] align correctly.
   const sourceMeta = [
-    ...(pdfFiles ?? []).map(f => ({ title: f.name.replace(/\.(pdf|txt|docx)$/i, ''), kind: 'pdf' as const })),
+    ...(pdfFiles ?? []).map(f => ({ title: f.name.replace(/\.(pdf|txt|docx)$/i, ''), kind: 'pdf' as const, fileId: f.fileId, filename: f.name })),
     ...kbDocs.map(d => ({ title: d.filename.replace(/_/g, ' ').replace(/\.(pdf|txt|docx)$/i, ''), kind: 'kb' as const, kbDocId: d.id })),
     ...webSources.map(s => ({ title: s.title, url: s.url, kind: 'web' as const })),
   ];
@@ -391,7 +387,7 @@ Each section must stand alone — do not cross-reference between sections. Only 
       type: "object" as const,
       properties: {
         question: { type: "string", description: "The clarifying question to ask" },
-        choices: { type: "array", items: { type: "string" }, description: "3–4 specific, relevant choices. Include 'Other' as the last option when open-ended answers are possible." },
+        choices: { type: "array", items: { type: "string" }, description: "3–4 specific, relevant choices, PLUS a final 'Other' choice as the last item every time — the listed choices can never cover every real answer, so teachers always need a way to type their own." },
         allow_multiple: { type: "boolean", description: "Whether the teacher can select multiple choices. Default false." },
       },
       required: ["question", "choices"],
@@ -415,14 +411,14 @@ Each section must stand alone — do not cross-reference between sections. Only 
 
   const updatePlanTool = {
     name: "update_plan",
-    description: "Send the finished plan to the right panel for the teacher to review, edit, and save. Call this ONLY after completing all MCQ questions AND search_strategies. The panel generates the structured document automatically — do NOT write the plan content in chat.",
+    description: "Send the finished plan to the right panel for the teacher to review, edit, and save. Call this ONLY after completing all context MCQ questions, search_strategies, AND the mandatory format question (action_plan/agenda), or after the report content/format clarifying questions (report). None of the three types have a fixed template — the format question is required every time. The panel generates the structured document automatically — do NOT write the plan content in chat.",
     input_schema: {
       type: "object" as const,
       properties: {
         type: {
           type: "string",
-          enum: ["action_plan", "agenda"],
-          description: "action_plan for intervention/support plans; agenda for meeting agendas",
+          enum: ["action_plan", "agenda", "report"],
+          description: "action_plan for intervention/support plans; agenda for meeting agendas; report for a data report or family-facing summary",
         },
       },
       required: ["type"],
@@ -492,6 +488,7 @@ Each section must stand alone — do not cross-reference between sections. Only 
               if (currentToolName === "ask_clarifying_question") {
                 try {
                   const parsed = JSON.parse(toolBuffer);
+                  console.log('❓ ask_clarifying_question:', parsed.question, '|', parsed.choices);
                   send({
                     type: "ask_choices",
                     toolCallId: currentToolUseId,
@@ -512,7 +509,7 @@ Each section must stand alone — do not cross-reference between sections. Only 
 
                   // Targeted KB + web search using the model's specific query
                   const [searchKbDocs, searchWebResult] = await Promise.all([
-                    kbScopes.length ? searchKB(query, kbScopes, 6) : Promise.resolve([]),
+                    kbScopes.length ? searchKB(query, kbScopes, 6, userSchool) : Promise.resolve([]),
                     useWeb ? prefetchWeb(query) : Promise.resolve({ summary: '', sources: [] as { title: string; url: string }[] }),
                   ]);
                   console.log('📚 search_strategies: KB docs:', searchKbDocs.length, '| Web sources:', searchWebResult.sources.length);
@@ -613,7 +610,7 @@ Each section must stand alone — do not cross-reference between sections. Only 
 
               } else if (currentToolName === "update_plan") {
                 try {
-                  const { type } = JSON.parse(toolBuffer) as { type: 'action_plan' | 'agenda' };
+                  const { type } = JSON.parse(toolBuffer) as { type: 'action_plan' | 'agenda' | 'report' };
                   console.log('📋 update_plan:', type);
                   send({ type: "update_plan", artifactType: type });
                 } catch {}

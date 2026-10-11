@@ -6,7 +6,6 @@ export interface SELData {
   scale_min: number
   scale_max: number
   scales: string[]
-  school_avg: Record<string, number>
   groups: Array<{
     label: string
     n: number
@@ -15,13 +14,20 @@ export interface SELData {
   }>
 }
 
-const SCHOOL_COLOR = '#22a559'
-const GROUP_COLOR = '#f97316'
+const ON_TRACK_COLOR = '#22a559'
+const GROUP_COLOR = '#6c3fc5'
 
 export default function SELCard({ data }: { data: SELData }) {
   const [activeIdx, setActiveIdx] = useState(0)
-  const groups = data?.groups ?? []
+  const allGroups = data?.groups ?? []
   const scales = data?.scales ?? []
+  // "On Track" (no ABC risk flags) is the comparison baseline, in place of a
+  // school-wide average — this shows whether SEL scores actually track with
+  // ABC risk status, not just an undifferentiated school number. It's never
+  // itself selectable as the group being compared, since comparing it to
+  // itself is meaningless.
+  const onTrack = allGroups.find(g => /^on track$/i.test(g.label))
+  const groups = onTrack ? allGroups.filter(g => g !== onTrack) : allGroups
   const group = groups[activeIdx]
   const range = (data?.scale_max - data?.scale_min) || 1
   const barPct = (val: number) => Math.max(0, Math.min(100, ((val - (data?.scale_min ?? 0)) / range) * 100))
@@ -73,10 +79,12 @@ export default function SELCard({ data }: { data: SELData }) {
 
         {/* Legend */}
         <div style={{ display: 'flex', gap: 16, marginBottom: 12 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'var(--text-muted)' }}>
-            <span style={{ width: 14, height: 4, background: SCHOOL_COLOR, borderRadius: 2, display: 'inline-block' }} />
-            School average ({data.scale_min}–{data.scale_max})
-          </div>
+          {onTrack && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'var(--text-muted)' }}>
+              <span style={{ width: 14, height: 4, background: ON_TRACK_COLOR, borderRadius: 2, display: 'inline-block' }} />
+              On Track — no ABC flags ({onTrack.n.toLocaleString()})
+            </div>
+          )}
           <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'var(--text-muted)' }}>
             <span style={{ width: 14, height: 4, background: GROUP_COLOR, borderRadius: 2, display: 'inline-block' }} />
             {group?.label} ({group?.n.toLocaleString()})
@@ -85,7 +93,7 @@ export default function SELCard({ data }: { data: SELData }) {
 
         {/* Rows */}
         {scales.map((scale) => {
-          const schoolVal = data.school_avg[scale] ?? 0
+          const onTrackVal = onTrack?.scores[scale] ?? 0
           const groupVal = group?.scores[scale] ?? 0
           return (
             <div key={scale} style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
@@ -93,15 +101,17 @@ export default function SELCard({ data }: { data: SELData }) {
                 {scale}
               </div>
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <div style={{ height: 8, background: '#eef0f6', borderRadius: 3, overflow: 'hidden' }}>
-                  <div style={{ width: `${barPct(schoolVal)}%`, height: '100%', background: SCHOOL_COLOR, borderRadius: 3 }} />
-                </div>
+                {onTrack && (
+                  <div style={{ height: 8, background: '#eef0f6', borderRadius: 3, overflow: 'hidden' }}>
+                    <div style={{ width: `${barPct(onTrackVal)}%`, height: '100%', background: ON_TRACK_COLOR, borderRadius: 3 }} />
+                  </div>
+                )}
                 <div style={{ height: 8, background: '#eef0f6', borderRadius: 3, overflow: 'hidden' }}>
                   <div style={{ width: `${barPct(groupVal)}%`, height: '100%', background: GROUP_COLOR, borderRadius: 3 }} />
                 </div>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 28, textAlign: 'right' }}>
-                <span style={{ fontSize: 12, fontWeight: 700, color: SCHOOL_COLOR }}>{schoolVal.toFixed(1)}</span>
+                {onTrack && <span style={{ fontSize: 12, fontWeight: 700, color: ON_TRACK_COLOR }}>{onTrackVal.toFixed(1)}</span>}
                 <span style={{ fontSize: 12, fontWeight: 700, color: GROUP_COLOR }}>{groupVal.toFixed(1)}</span>
               </div>
             </div>

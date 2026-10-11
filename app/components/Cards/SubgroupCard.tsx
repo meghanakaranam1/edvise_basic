@@ -1,7 +1,12 @@
 'use client'
 import { useState } from 'react'
 
-type Indicator = { name: string; count: number; pct: number; color: string }
+type SubIndicator = { name: string; count: number; pct: number }
+// Present only when this category has more than one contributing signal
+// (e.g. Math Grade + English Grade both feeding "Academic Failure") — see
+// the matching comment in RiskOverviewCard.tsx. The parent count/pct is the
+// union across all sub signals, so it won't equal their sum.
+type Indicator = { name: string; count: number; pct: number; color: string; sub?: SubIndicator[] }
 type Combination = { label: string; count: number; pct: number }
 type Group = {
   name: string
@@ -40,6 +45,7 @@ function Pill({ abbrev }: { abbrev: string }) {
 
 function GroupRow({ group, initOpen }: { group: Group; initOpen: boolean }) {
   const [open, setOpen] = useState(initOpen)
+  const [openInd, setOpenInd] = useState<Record<string, boolean>>({})
   const isHighRisk = group.any_flag_pct > 30
 
   return (
@@ -73,18 +79,45 @@ function GroupRow({ group, initOpen }: { group: Group; initOpen: boolean }) {
           {/* Risk indicators */}
           <div style={{ marginTop: 10, border: '1px solid #e4e9f2', borderRadius: 8, overflow: 'hidden' }}>
             <div style={{ padding: '7px 10px', background: '#f7f9fc', borderBottom: '1px solid #e4e9f2' }}>
-              <div style={{ fontSize: 12, fontWeight: 600, color: '#2A3B7C' }}>Risk indicators (any students with each flag)</div>
+              <div style={{ fontSize: 12, fontWeight: 600, color: '#2A3B7C' }}>Risk indicators <span style={{ fontWeight: 400, color: '#7a89b8' }}>(counted independently — a student can appear in more than one row)</span></div>
             </div>
             {group.indicators.map((ind) => {
+              const expandable = (ind.sub?.length ?? 0) > 1
+              const indOpen = !!openInd[ind.name]
               return (
-                <div key={ind.name} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderBottom: '1px solid #f9fafc' }}>
-                  <div style={{ width: 130, fontSize: 12, color: '#2A3B7C', fontWeight: 600, flexShrink: 0 }}>{ind.name}</div>
-                  <div style={{ flex: 1, background: '#f0f3fa', borderRadius: 2, height: 8, overflow: 'hidden' }}>
-                    <div style={{ width: `${ind.pct}%`, height: '100%', background: ind.color, borderRadius: 2 }} />
+                <div key={ind.name} style={{ borderBottom: '1px solid #f9fafc' }}>
+                  <div
+                    onClick={expandable ? () => setOpenInd(s => ({ ...s, [ind.name]: !s[ind.name] })) : undefined}
+                    style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', cursor: expandable ? 'pointer' : 'default' }}
+                  >
+                    <div style={{ width: 130, fontSize: 12, color: '#2A3B7C', fontWeight: 600, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 5 }}>
+                      {expandable && (
+                        <span style={{ fontSize: 8, color: '#7a89b8', transition: 'transform .15s', transform: indOpen ? 'rotate(90deg)' : 'none', display: 'inline-block' }}>▶</span>
+                      )}
+                      <span>{ind.name}</span>
+                    </div>
+                    <div style={{ flex: 1, background: '#f0f3fa', borderRadius: 2, height: 8, overflow: 'hidden' }}>
+                      <div style={{ width: `${ind.pct}%`, height: '100%', background: ind.color, borderRadius: 2 }} />
+                    </div>
+                    <div style={{ fontSize: 11, color: '#2A3B7C', fontFamily: 'monospace', width: 80, textAlign: 'right' }}>
+                      {ind.count} · {ind.pct}%
+                    </div>
                   </div>
-                  <div style={{ fontSize: 11, color: '#2A3B7C', fontFamily: 'monospace', width: 80, textAlign: 'right' }}>
-                    {ind.count} · {ind.pct}%
-                  </div>
+                  {expandable && indOpen && (
+                    <div style={{ padding: '0 10px 8px 24px' }}>
+                      {ind.sub!.map(s => (
+                        <div key={s.name} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '3px 0' }}>
+                          <div style={{ width: 106, fontSize: 10.5, color: '#7a89b8', flexShrink: 0 }}>{s.name}</div>
+                          <div style={{ flex: 1, background: '#f0f3fa', borderRadius: 2, height: 5, overflow: 'hidden' }}>
+                            <div style={{ width: `${s.pct}%`, height: '100%', background: ind.color, opacity: 0.65, borderRadius: 2 }} />
+                          </div>
+                          <div style={{ fontSize: 10, color: '#7a89b8', fontFamily: 'monospace', width: 70, textAlign: 'right' }}>
+                            {s.count} · {s.pct}%
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )
             })}

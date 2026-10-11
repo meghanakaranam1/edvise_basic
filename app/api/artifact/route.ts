@@ -9,55 +9,36 @@ type ArtifactType = 'action_plan' | 'agenda' | 'report'
 
 const SCHEMAS: Record<ArtifactType, string> = {
   action_plan: `{
-  "title": "[Target Group] Intervention Plan ([Primary Risk])",
-  "tags": ["Behavior", "Academic"],
-  "summary": "2–3 sentence description of the target group and what this plan addresses",
-  "goal": "1–2 sentence measurable goal",
-  "target_date": "",
-  "students": [],
-  "steps": [
+  "title": "Descriptive title — target group & primary focus",
+  "sections": [
     {
-      "id": "step_1",
-      "title": "Step title",
-      "bullets": [
-        "Specific action (Owner: Role)",
-        "Another action (Owner: Role)"
-      ]
+      "title": "Section title — written to match what the teacher asked for, not a fixed label like 'Intervention Steps'",
+      "content": "Rich markdown. Use **bold** for subsection titles (not # headings), numbered/bulleted lists for steps/actions, and include Owner for any action item."
     }
   ],
-  "schedule": [],
-  "notes": ""
+  "closing_actions": [
+    "Specific priority action with owner and deadline",
+    "Another priority action"
+  ]
 }`,
   agenda: `{
-  "title": "meeting title",
-  "date_suggestion": "e.g. Next available Monday",
-  "duration_minutes": 60,
-  "location": "Conference Room / Virtual",
-  "purpose": "1–2 sentence meeting purpose",
-  "attendees_placeholder": ["Grade Level Team", "School Counselor", "Admin"],
-  "items": [
-    { "time": "9:00 AM", "title": "item title", "detail": "what to cover", "lead": "Teacher", "duration_min": 10 }
+  "title": "Meeting title",
+  "sections": [
+    {
+      "title": "Section title — written to match what the teacher asked for, not a fixed label like 'Agenda Items'",
+      "content": "Rich markdown. Use **bold** for subsection titles (not # headings), and a bulleted or numbered list for agenda items/time blocks if that's the format requested — include time/duration/lead inline in the bullet text when relevant, not as separate structured fields."
+    }
+  ],
+  "closing_actions": [
+    "A follow-up item or next step from the meeting, if that fits the requested format"
   ]
 }`,
   report: `{
   "title": "Descriptive title — topic & key themes",
-  "template": "full_analysis",
   "sections": [
     {
-      "title": "SECTION 1 — CLASSROOM & COHORT SNAPSHOT",
-      "content": "Rich markdown narrative. Use **bold** for subsection titles (not # headings). Use - for bullet lists. Include: cohort overview with numbers, attendance overview, key early-warning subgroups, grade-level patterns. 200-350 words."
-    },
-    {
-      "title": "SECTION 2 — INTERSECTION ANALYSIS",
-      "content": "Rich markdown. Subsections: **Where risks overlap (and why it matters)**, **Notable grade-level signal**, **Tiered support framework (aligned to the findings)**. Include why intersections matter, specific subgroup numbers, Tier 1/2/3 breakdown, immediate data gaps. 200-350 words."
-    },
-    {
-      "title": "SECTION 3 — SEL & WELLBEING",
-      "content": "Rich markdown. Subsections: **SEL patterns evident in the data**, **Students/groups to flag for additional SEL/counseling support**, **Current/proposed SEL-aligned approaches (from notes)**. 150-250 words."
-    },
-    {
-      "title": "SECTION 4 — INTERVENTION STRATEGIES",
-      "content": "Rich markdown. Number each strategy (1), 2), 3) etc). For each: **Strategy Name** then sub-bullets: - **How to implement:** ..., - **Owner(s):** ..., - **Cadence/timeline:** ..., - **Success metrics:** bulleted list. Include 3-4 strategies. 300-450 words."
+      "title": "Section title — written to match what the teacher asked for, not a fixed label",
+      "content": "Rich markdown narrative. Use **bold** for subsection titles (not # headings). Use - for bullet lists and specific numbers from the data where relevant."
     }
   ],
   "closing_actions": [
@@ -68,43 +49,28 @@ const SCHEMAS: Record<ArtifactType, string> = {
 }
 
 const INSTRUCTIONS: Record<ArtifactType, string> = {
-  action_plan: 'Generate a detailed intervention action plan. Treat ALL of the teacher\'s saved notes with equal weight — synthesize across every note, not just the most recent topic. The steps, strategies, and specific details must be drawn from all notes combined. Do not invent generic steps not grounded in the notes or conversation. Create 4–6 numbered intervention steps, each with a clear title and 3–5 specific, actionable bullets. Each bullet must include Owner. Leave target_date and schedule empty — do NOT add any dates, timelines, phases, or day/week counts unless the teacher explicitly asked for them. Tags should reflect the primary risk categories (e.g. Behavior, Academic, Attendance, Engagement). Make owners realistic: ELA Teacher, Counselor, Success Coach, Dean/AP, Admin.',
-  agenda: 'Generate a 60–90 min team meeting agenda. Treat ALL of the teacher\'s saved notes with equal weight — synthesize across every note, not just the most recent topic. The agenda items, discussion points, and focus areas must reflect the full breadth of the notes combined. Do not invent generic agenda items not grounded in the notes or conversation. Include 5–7 timed agenda items, each with a designated lead and specific detail drawn from the notes.',
-  report: 'Generate a comprehensive student support report. Treat ALL of the teacher\'s saved notes with equal weight — synthesize across every note, not just the most recent topic. The strategies, findings, and specific details from all notes must appear in the report sections. Do not invent generic content not grounded in the notes or conversation. Each section must be rich markdown narrative prose with subsection headings (**bold**), bullet lists, and specific numbers from the data. The closing_actions must be 4–6 specific priority items with named owners, drawn from all notes combined.',
+  action_plan: 'Generate an intervention action plan. There is no fixed template — the teacher defines the content and format themselves, via clarifying questions already asked earlier in the conversation (what to focus on, how it should be organized/formatted). Build the "sections" array to match EXACTLY what they asked for: use their own topic(s)/structure as section titles (not a generic label like "Intervention Steps" unless that is genuinely what was requested), include as many or as few sections as fits their request, and match the format they described — numbered steps with owners, a narrative plan, a simple checklist, etc. Treat ALL of the teacher\'s saved notes with equal weight — synthesize across every note, not just the most recent topic. The steps, strategies, and specific details must be drawn from the notes/conversation combined — do not invent generic content not grounded in them. Do NOT add any dates, timelines, phases, or day/week counts unless the teacher explicitly asked for them. closing_actions should be specific priority items with named owners where that fits the requested format — omit it (empty array) if it doesn\'t fit. If genuinely nothing in the conversation says what this plan should focus on or be formatted like, write a reasonable general-purpose version instead of guessing wildly.',
+  agenda: 'Generate a meeting agenda. There is no fixed template — the teacher defines the content and format themselves, via clarifying questions already asked earlier in the conversation (what to focus on, how it should be organized/formatted). Build the "sections" array to match EXACTLY what they asked for: use their own topic(s)/structure as section titles (not a generic label like "Agenda Items" unless that is genuinely what was requested), include as many or as few sections as fits their request, and match the format they described — a standard timed agenda, a simple topic list, a discussion-focused outline, etc. Treat ALL of the teacher\'s saved notes with equal weight — synthesize across every note, not just the most recent topic. The agenda items, discussion points, and focus areas must reflect the full breadth of the notes/conversation combined — do not invent generic content not grounded in them. closing_actions should be concrete follow-up items where that fits the requested format — omit it (empty array) if it doesn\'t fit. If genuinely nothing in the conversation says what this meeting should focus on or be formatted like, write a reasonable general-purpose version instead of guessing wildly.',
+  report: 'Generate a student support report. There is no fixed template — the teacher defines the content and format themselves, usually via clarifying questions already asked earlier in the conversation (what to focus on, who it\'s for, how it should be organized). Build the "sections" array to match EXACTLY what they asked for: use their own topic(s) as section titles (not generic labels like "Snapshot" or "Analysis" unless that is genuinely what was requested), include as many or as few sections as fits their request, and match the tone/format they described — a narrative write-up, a plain-language family-facing version, a short bullet breakdown, etc. Treat ALL of the teacher\'s saved notes with equal weight — synthesize across every note, not just the most recent topic. The findings and specific details from the notes/data must appear in the sections — do not invent generic content not grounded in the notes or conversation. Each section\'s content is markdown: use **bold** for subsection titles (not # headings), bullet lists, and specific numbers from the data where relevant. closing_actions should be specific priority items with named owners where that fits the requested format — omit it (empty array) if the teacher asked for something where priority actions don\'t make sense (e.g. a short family letter). If genuinely nothing in the conversation says what this report should focus on or be formatted like, write a reasonable general-purpose version instead of guessing wildly.',
 }
 
-const FAMILY_LETTER_SCHEMA = `{
-  "title": "letter title",
-  "template": "family_letter",
-  "sections": [
-    {
-      "title": "WHAT WE FOUND",
-      "content": "Plain-language summary of findings written to families — warm, clear, jargon-free. Use simple bullet lists. 150-200 words."
-    },
-    {
-      "title": "WHAT THIS MEANS FOR YOUR CHILD",
-      "content": "Explain the implications in accessible terms. What signs to watch for. 100-150 words."
-    },
-    {
-      "title": "HOW YOU CAN HELP",
-      "content": "Specific, actionable things families can do at home. Numbered list format. 100-150 words."
-    },
-    {
-      "title": "WHAT THE SCHOOL IS DOING",
-      "content": "What the school will do next and how families can stay informed. 100-150 words."
-    }
-  ],
-  "closing_actions": ["School next step 1", "How families can reach out"]
-}`
-
-const FAMILY_LETTER_INSTRUCTION = 'Generate a family-facing letter based on the data. Write in plain, warm, accessible language a parent or guardian can understand. Avoid all educational jargon. Focus on what the findings mean for students and what families can do to help.'
+// An anchored inline comment — the teacher highlighted a specific passage in
+// the already-generated document and left feedback on just that part (see
+// AnchoredComments.tsx). This is a SCOPED edit: Claude revises only what the
+// comment actually calls for and leaves the rest of the document untouched,
+// rather than regenerating from scratch the way a fresh generation does.
+type EditContext = {
+  currentDocument: unknown
+  quotedText: string
+  comment: string
+}
 
 export async function POST(req: NextRequest) {
-  const { type, messages, notes, reportTemplate }: {
+  const { type, messages, notes, editContext }: {
     type: ArtifactType
     messages: { role: string; content: string }[]
     notes?: { id: string; content: string }[]
-    reportTemplate?: string
+    editContext?: EditContext
   } = await req.json()
 
   if (!SCHEMAS[type]) return new Response('Invalid type', { status: 400 })
@@ -117,11 +83,33 @@ export async function POST(req: NextRequest) {
     ? `\n\nSaved notes from the teacher:\n${notes.map((n, i) => `Note ${i + 1}: ${n.content.replace(/<!--[\s\S]*?-->/g, '').trim().slice(0, 600)}`).join('\n\n')}`
     : ''
 
-  const isFamilyLetter = type === 'report' && reportTemplate === 'family_letter'
-  const schema = isFamilyLetter ? FAMILY_LETTER_SCHEMA : SCHEMAS[type]
-  const instruction = isFamilyLetter ? FAMILY_LETTER_INSTRUCTION : INSTRUCTIONS[type]
-  // Inject the actual template value into the report schema context
-  const schemaWithTemplate = isFamilyLetter ? schema : schema.replace('"full_analysis"', `"${reportTemplate ?? 'full_analysis'}"`)
+  const schema = SCHEMAS[type]
+  const instruction = INSTRUCTIONS[type]
+
+  if (editContext) {
+    const response = await client.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 4000,
+      system: `You are revising an EXISTING ${type.replace('_', ' ')} based on one specific, scoped piece of feedback — not regenerating it from scratch. The teacher highlighted one exact passage in the document and left a comment on it. Make ONLY the change(s) that comment actually calls for; leave every other part of the document — wording, structure, other sections/steps/items — exactly as it was, unless the comment clearly implies a broader change is needed. The document schema is:
+${schema}
+
+Return ONLY valid JSON, no markdown fences, no explanation, matching exactly this shape:
+{"document": <the complete updated document, matching the schema above, with the scoped change applied>, "summary": "<one short sentence describing what you changed, written to the teacher, e.g. 'Added a specific deadline to that step.'>"}`,
+      messages: [{
+        role: 'user',
+        content: `Current document (JSON):\n${JSON.stringify(editContext.currentDocument)}\n\nThe teacher highlighted this exact passage:\n"${editContext.quotedText}"\n\nTheir comment on it:\n"${editContext.comment}"\n\nRevise the document accordingly.`,
+      }],
+    })
+    const raw = response.content[0].type === 'text' ? response.content[0].text : ''
+    const match = raw.match(/\{[\s\S]*\}/)
+    try {
+      const parsed = JSON.parse(match?.[0] ?? raw) as { document: Record<string, unknown>; summary: string }
+      parsed.document.date_created = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+      return Response.json(parsed)
+    } catch {
+      return new Response('JSON parse error', { status: 500 })
+    }
+  }
 
   const response = await client.messages.create({
     model: 'claude-sonnet-4-6',
@@ -129,7 +117,7 @@ export async function POST(req: NextRequest) {
     system: `You are an education specialist generating structured artifacts for teachers. ${instruction}
 
 Return ONLY valid JSON — no markdown fences, no explanation, no extra text. Match this schema exactly:
-${schemaWithTemplate}`,
+${schema}`,
     messages: [{ role: 'user', content: `${notesBlock ? `Teacher's saved notes (use these as the primary source):\n${notesBlock.trim()}\n\n` : ''}Conversation context:\n\n${context}\n\nGenerate the ${type.replace('_', ' ')}.` }],
   })
 

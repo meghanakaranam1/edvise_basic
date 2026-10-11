@@ -1,7 +1,7 @@
 'use client'
 import { useRef, useState, useEffect } from 'react'
 import './globals.css'
-import MessageList, { type Message, LONGITUDINAL_STAGE_PROMPT } from './components/MessageList'
+import MessageList, { type Message } from './components/MessageList'
 import MessageInput, { type SourceKey } from './components/MessageInput'
 import { uploadFile, getGoogleToken, importGoogleSheet, getGoogleSheetTabs, fetchIdentityColumns, shareConversation, getConversationMembers, streamChat, generateArtifact } from './lib/api'
 import { openGoogleSheetPicker } from './lib/googlePicker'
@@ -13,11 +13,11 @@ import ConversationsView from './components/ConversationsView'
 import AdminKB from './components/AdminKB'
 import SchoolContextSettings from './components/Settings/SchoolContextSettings'
 import type { Note, ArtifactType, Artifacts, Report } from './components/RightPanel/types'
-import { ReportDetail } from './components/RightPanel/ReportTab'
 import { parseCsv, parseCsvText, type CsvMeta } from './lib/csvUtils'
 import { isSpreadsheetFile, parseWorkbook } from './lib/xlsxParse'
 import { sheetsToCsv, summarizeSheet, chooseSetupSheet, type SheetTable } from './lib/sheetMerge'
 import type { Thresholds } from './components/Cards/CriteriaSettingCard'
+import { signalKey } from './components/Cards/CriteriaSettingCard'
 import { thresholdPrompt } from './components/Cards/CriteriaSettingCard'
 import { supabase } from './lib/supabase'
 import type { SupabaseSession } from './lib/supabase'
@@ -31,14 +31,22 @@ import {
   getConversationFiles,
   listContextRules,
   addContextRule,
+  updateConversationTitle,
 } from './lib/db'
 
 type Phase = 'idle' | 'confirming' | 'criteria' | 'chatting'
 
 const LIBRARY_VIEWS = new Set(['library-kb', 'library-all', 'library-strategy', 'library-reports', 'library-pending'])
-const ACTIONS_VIEWS = new Set(['actions-plans', 'actions-agendas', 'actions-reports'])
+const ACTIONS_VIEWS = new Set(['actions'])
 const SETTINGS_VIEWS = new Set(['settings', 'kb'])
 const CONVERSATIONS_VIEW = 'conversations'
+
+// Team Workspace (sharing a conversation + @Edvise mentions) is built and the
+// DB migration is live, but not launched to teachers yet — gated behind this
+// flag so the entry points (Share button, sidebar section) stay hidden in
+// prod until it's ready to announce. Flip NEXT_PUBLIC_ENABLE_SHARING=true to
+// turn it on; no further deploy needed on the code side.
+const ENABLE_TEAM_SHARING = process.env.NEXT_PUBLIC_ENABLE_SHARING === 'true'
 
 export default function Page() {
   // Auth
@@ -76,6 +84,12 @@ export default function Page() {
   const apiMessages = useRef<{ role: 'user' | 'assistant'; content: string | unknown[] }[]>([])
   const conversationIdRef = useRef<string | undefined>(undefined)
   const pendingQuestionRef = useRef('')
+  // Note ids selected in the Notes-tab picker when manually requesting a
+  // document — carried across the chat round trip (clarifying questions ->
+  // update_plan) so the eventual generation still scopes to just those
+  // notes instead of silently falling back to all of them. Cleared once
+  // consumed by the update_plan handler below.
+  const manualGenerateNoteIdsRef = useRef<string[] | null>(null)
   const clarifyToolCallRef = useRef<{ id: string; input: { question: string; choices: string[] } } | null>(null)
 
   // Sidebar
@@ -102,7 +116,7 @@ export default function Page() {
 
   // Right panel
   const [panelOpen, setPanelOpen] = useState(false)
-  const [panelExpanded, setPanelExpanded] = useState(false)
+  const [panelWidth, setPanelWidth] = useState(360)
   const [panelTab, setPanelTab] = useState('notes')
   const [notes, setNotes] = useState<Note[]>([])
   const schoolContextRef = useRef<string>('')
@@ -148,7 +162,6 @@ export default function Page() {
     schoolContextRef.current = rules.filter(r => r.enabled).map(r => r.text).join('\n\n')
   }
   const [artifacts, setArtifacts] = useState<Artifacts>({})
-  const [reportModal, setReportModal] = useState<{ report: Report; date: string; isNew: boolean } | null>(null)
   const [generating, setGenerating] = useState<string | null>(null)
 
   // Load auth session
@@ -333,8 +346,11 @@ export default function Page() {
     if (isStreaming) return
     setMainView('chat')
 
-    // Create Supabase conversation on first message that has a file attached
-    if (session && !conversationIdRef.current && fileIdRef.current) {
+    // Create Supabase conversation on the first message of this session,
+    // whether or not a file is attached — a pure-chat conversation (no
+    // upload) previously never got persisted at all: no row, no saved
+    // messages, no sidebar entry, nothing survived a refresh.
+    if (session && !conversationIdRef.current) {
       try {
         const title = userText.slice(0, 60)
         const convo = await createConversation(title, session.user.id)
@@ -349,6 +365,20 @@ export default function Page() {
           ...pdfFiles.map(f => ({ file_id: f.fileId, filename: f.name, file_type: 'pdf' })),
         ]
         if (filesToSave.length) saveConversationFiles(convo.id, filesToSave).catch(() => {})
+        // Upgrade the raw-text fallback title to a short, meaningful one once
+        // it's ready — off the critical path, so the conversation is usable
+        // immediately with the fallback in the meantime.
+        fetch('/api/generate-title', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: userText }),
+        })
+          .then(res => res.json())
+          .then(({ title: generatedTitle }: { title: string | null }) => {
+            if (!generatedTitle) return
+            updateConversationTitle(convo.id, generatedTitle).then(() => setSidebarRefreshKey(k => k + 1))
+          })
+          .catch(() => {})
       } catch (err) { console.error('createConversation failed:', err) }
     }
 
@@ -392,6 +422,7 @@ export default function Page() {
         columnMapping: columnMapping ?? undefined,
         schoolContext: schoolContextRef.current || undefined,
         kbScope,
+        userSchool: session?.user?.user_metadata?.school_name || undefined,
         onChunk(text) {
           accumulated += text
           replaceLastAssistant(() => accumulated)
@@ -456,11 +487,13 @@ export default function Page() {
         apiMessages.current.push({ role: 'assistant', content: accumulated })
       }
 
-      // Auto-generate artifact in the right panel if the model emitted a <!--GENERATE:--> marker
+      // Auto-generate artifact in the right panel if the model called update_plan
       if (pendingGenerate) {
         setPanelOpen(true)
-        setPanelTab(pendingGenerate === 'agenda' ? 'agenda' : 'action_plan')
-        handleGenerate(pendingGenerate)
+        setPanelTab(pendingGenerate)
+        const scopedNoteIds = manualGenerateNoteIdsRef.current ?? undefined
+        manualGenerateNoteIdsRef.current = null
+        handleGenerate(pendingGenerate, scopedNoteIds)
       }
 
       // Persist assistant message
@@ -536,7 +569,17 @@ export default function Page() {
     fileIdRef.current = fileId
     setFileLabel(meta.filename)
     setCsvPreview({ columns: meta.columns, rows: meta.preview })
-    const mergedUniques = { ...extra?.columnUniques, ...meta.columnUniques }
+    // columnUniques carries two key schemes: bare column names (setup sheet
+    // only — used by the grade-level lookup below, which has no concept of
+    // other sheets) AND "sourceFile::column" (every sheet, including setup —
+    // used by the criteria UI to look up the RIGHT sheet's values when a
+    // multi-tab upload has two sheets sharing a column name, which would
+    // otherwise silently collide under the bare-name scheme alone).
+    const setupSourceFileForUniques = extra?.setupSourceFile ?? meta.filename
+    const scopedSetupUniques = Object.fromEntries(
+      Object.entries(meta.columnUniques).map(([col, vals]) => [signalKey({ column: col, sourceFile: setupSourceFileForUniques }), vals])
+    )
+    const mergedUniques = { ...extra?.columnUniques, ...scopedSetupUniques, ...meta.columnUniques }
     setColumnUniques(mergedUniques)
     columnUniquesRef.current = mergedUniques
 
@@ -630,7 +673,14 @@ export default function Page() {
             // e.g. a tardy log and a separate suspension log can BOTH
             // contribute independent "behavior" signals, combined with OR
             // later in the criteria step rather than one silently winning.
-            return { labels: foundLabels, columnUniques: otherMeta.columnUniques, indicators: found.map(s => ({ ...s, sourceFile: u.filename })) }
+            // columnUniques is scoped "sourceFile::column" here (not bare
+            // column name) so that two sheets sharing a column name — common
+            // in a multi-tab upload — don't silently clobber each other once
+            // merged across sheets below.
+            const scopedUniques = Object.fromEntries(
+              Object.entries(otherMeta.columnUniques).map(([col, vals]) => [signalKey({ column: col, sourceFile: u.filename }), vals])
+            )
+            return { labels: foundLabels, columnUniques: scopedUniques, indicators: found.map(s => ({ ...s, sourceFile: u.filename })) }
           }
         } catch { /* non-fatal — this sheet's columns just won't get labeled/classified */ }
         return { labels: {}, columnUniques: {}, indicators: [] as import('./api/suggest-columns/route').Indicators }
@@ -802,6 +852,16 @@ export default function Page() {
     conversationIdRef.current = id
     setMainView('chat')
     setMembers([])
+    // Notes and generated documents belong to the conversation they were
+    // created in, same as handleNewChat — notes/artifacts aren't reloaded
+    // from this conversation's own history below (not persisted per-
+    // conversation), so without this the previous conversation's leftover
+    // right-panel state would otherwise carry over.
+    setNotes([])
+    setArtifacts({})
+    setGenerating(null)
+    setPanelOpen(false)
+    setPanelTab('notes')
 
     // Load messages, file references, and the member list (for attributing
     // teammates' messages) from Supabase
@@ -858,6 +918,15 @@ export default function Page() {
     setPdfFiles([])
     setMembers([])
     setMainView('chat')
+    // Notes and generated documents belong to the conversation they were
+    // created in — a new chat starts with an empty right panel, not the
+    // previous conversation's leftover notes/Action Plan/Agenda/Report
+    // still sitting there.
+    setNotes([])
+    setArtifacts({})
+    setGenerating(null)
+    setPanelOpen(false)
+    setPanelTab('notes')
   }
 
   function handleSend(text: string, kbScope?: string) {
@@ -962,95 +1031,7 @@ export default function Page() {
       showBrainstormCard()
       return
     }
-    if (text === LONGITUDINAL_STAGE_PROMPT) {
-      showLongitudinalWizard()
-      return
-    }
     doSend(text, needsKB ? getKbScope() : '')
-  }
-
-  // Which groups exist in this data — same detection heuristic as the
-  // brainstorm subgroup step, kept separate so a change to one doesn't
-  // silently affect the other's already-working behavior.
-  function computeGroupOptions(): string[] {
-    if (!columnMapping) return []
-    const labels = Object.values(columnMapping).map(l => l.toLowerCase())
-    const opts: string[] = []
-    if (labels.some(l => /race|ethnicity/i.test(l))) opts.push('Hispanic students', 'Black students', 'White students')
-    if (labels.some(l => /gender|sex\b/i.test(l))) opts.push('Male students', 'Female students')
-    if (labels.some(l => /special.ed|sped|\biep\b/i.test(l))) opts.push('Special Education students')
-    if (labels.some(l => /\bell\b|english.learn|esl/i.test(l))) opts.push('ELL students')
-    return opts
-  }
-
-  type LongCandidate = { category: string; type: string; signals: import('./api/suggest-columns/route').Indicators }
-
-  // A category with 2+ signals of the SAME type is treated as a genuine
-  // time-series candidate — the classifier already collapses same-period
-  // duplicates (e.g. excused/unexcused/total for one date), so surviving
-  // same-type siblings represent different points in time. Behavior is
-  // excluded: multiple behavior signals routinely mean different EVENT TYPES
-  // (tardy vs. suspension), not different times, and that can't be told
-  // apart from this metadata alone — Claude's own system-prompt instructions
-  // are the backstop for whatever this heuristic still gets wrong.
-  function detectLongitudinalCandidates(): LongCandidate[] {
-    const bySignatureKey = new Map<string, import('./api/suggest-columns/route').Indicators>()
-    for (const s of indicatorsRef.current) {
-      if (s.category === 'behavior') continue
-      const key = `${s.category}|${s.type}`
-      if (!bySignatureKey.has(key)) bySignatureKey.set(key, [])
-      bySignatureKey.get(key)!.push(s)
-    }
-    const out: LongCandidate[] = []
-    for (const [key, signals] of bySignatureKey) {
-      if (signals.length >= 2) {
-        const [category, type] = key.split('|')
-        out.push({ category, type, signals })
-      }
-    }
-    return out
-  }
-
-  const CATEGORY_LABEL: Record<string, string> = { attendance: 'Attendance', courseFailure: 'Course Failure', behavior: 'Behavior' }
-
-  function describeCandidate(c: LongCandidate): string {
-    const cols = c.signals.map(s => columnMapping?.[s.column] ?? s.column)
-    return `${CATEGORY_LABEL[c.category] ?? c.category} (${cols.join(', ')})`
-  }
-
-  // Purpose-built setup step for the Longitudinal stage button — reuses
-  // BrainstormQCard's existing sequential-checklist UI (already built for
-  // exactly this shape: multi-select steps that flatten into one descriptive
-  // prompt) rather than a new bespoke wizard component.
-  function showLongitudinalWizard() {
-    const candidates = detectLongitudinalCandidates()
-    if (!candidates.length) {
-      // No genuine multi-time-point signal in this data — let Claude say so
-      // directly rather than showing a wizard with nothing real to select.
-      doSend(LONGITUDINAL_STAGE_PROMPT, '')
-      return
-    }
-    const variableOptions = candidates.map(describeCandidate)
-    const groupOptions = computeGroupOptions()
-    addMessage({
-      role: 'card',
-      type: 'brainstorm_q',
-      data: {
-        promptPrefix: 'Show me the longitudinal trend, using the SAME threshold definitions already set, for:',
-        submitLabel: 'Show trend →',
-        questions: [
-          { id: 'variables', label: 'Which variables would you like to track over time?', options: variableOptions },
-          ...(groupOptions.length
-            ? [{ id: 'groups', label: 'Which groups would you like to compare? Whole School is always included as the baseline.', options: [...groupOptions, 'Whole School only'] }]
-            : []),
-        ],
-      },
-      onSubmit: handleLongitudinalSubmit,
-    })
-  }
-
-  function handleLongitudinalSubmit(text: string) {
-    doSend(text, '')
   }
 
   function handleBrainstormSubmit(text: string) {
@@ -1080,19 +1061,81 @@ export default function Page() {
     setNotes(prev => prev.filter(n => n.id !== id))
   }
 
-  async function handleGenerate(type: ArtifactType, noteIds?: string[], reportTemplate?: string) {
+  // Manually requesting a document from the Notes-tab picker (as opposed to
+  // asking in plain chat language) used to call handleGenerate directly for
+  // all three types, skipping the clarifying questions entirely — a real
+  // gap, since none of the three have a fixed template anymore and Claude
+  // should always ask what the teacher wants (focus + format) before
+  // generating, not just when triggered via chat. So this routes through
+  // the same real chat turn (and therefore the same ask_clarifying_question
+  // -> update_plan flow) instead of bypassing it; the selected note ids are
+  // stashed in a ref and picked back up once update_plan actually fires, so
+  // the eventual document still scopes to just the notes the teacher picked
+  // rather than all of them.
+  const GENERATE_LABEL: Record<ArtifactType, string> = {
+    action_plan: 'action plan',
+    agenda: 'meeting agenda',
+    report: 'report',
+  }
+  function requestGenerateFromNotes(type: ArtifactType, noteIds: string[]) {
+    manualGenerateNoteIdsRef.current = noteIds
+    const label = GENERATE_LABEL[type]
+    handleSend(noteIds.length === notes.length
+      ? `Generate a ${label} from my saved notes.`
+      : `Generate a ${label} from these ${noteIds.length} selected notes.`)
+  }
+
+  async function handleGenerate(type: ArtifactType, noteIds?: string[]) {
     setGenerating(type)
     try {
       const selectedNotes = noteIds
         ? notes.filter(n => noteIds.includes(n.id))
         : notes
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const result = await generateArtifact(type, apiMessages.current as any, selectedNotes, reportTemplate)
+      const result = await generateArtifact(type, apiMessages.current as any, selectedNotes)
       setArtifacts(prev => ({ ...prev, [type]: result }))
     } catch (err) {
       console.error('Artifact generation failed:', err)
     } finally {
       setGenerating(null)
+    }
+  }
+
+  // Reply to an anchored inline comment (see AnchoredComments.tsx) — the
+  // teacher highlighted one exact passage in an already-generated document
+  // and commented on just that. This is a real, SCOPED round trip: Claude
+  // revises only what the comment calls for (via editContext in
+  // /api/artifact), not a full regeneration — so the document stays visible
+  // and in place the whole time, no full-tab loading state. Returns the
+  // short summary of what changed so the open thread can show it inline,
+  // alongside the same relay card in the main chat claude.ai itself shows.
+  async function handleArtifactComment(type: ArtifactType, quotedText: string, comment: string): Promise<string> {
+    const current = artifacts[type] as { title?: string } | undefined
+    const title = current?.title ?? type.replace('_', ' ')
+    const relayId = `relay-${Date.now()}`
+    addMessage({ role: 'card', type: 'comment_relay', id: relayId, artifactType: type, artifactTitle: title, quoted: quotedText, text: comment, status: 'sent' })
+
+    apiMessages.current.push({ role: 'user', content: `Comment on the ${type.replace('_', ' ')} titled "${title}", on the passage "${quotedText}": ${comment}` })
+
+    try {
+      const result = await generateArtifact(type, [], undefined, { currentDocument: current, quotedText, comment }) as { document: Record<string, unknown>; summary: string }
+      setArtifacts(prev => ({ ...prev, [type]: result.document }))
+      const newTitle = (result.document?.title as string | undefined) ?? title
+      setMessages(prev => prev.map(m =>
+        (m.role === 'card' && m.type === 'comment_relay' && m.id === relayId)
+          ? { ...m, status: 'done', artifactTitle: newTitle, summary: result.summary }
+          : m
+      ))
+      return result.summary
+    } catch (err) {
+      console.error('Anchored comment edit failed:', err)
+      const errSummary = `Something went wrong updating the ${type.replace('_', ' ')} — want to try again?`
+      setMessages(prev => prev.map(m =>
+        (m.role === 'card' && m.type === 'comment_relay' && m.id === relayId)
+          ? { ...m, status: 'done', summary: errSummary }
+          : m
+      ))
+      throw err
     }
   }
 
@@ -1155,9 +1198,9 @@ export default function Page() {
               session={session}
               onRulesChanged={rules => { schoolContextRef.current = rules.filter(r => r.enabled).map(r => r.text).join('\n\n') }}
             />
-          ) : mainView === 'kb' || mainView === 'library-kb' ? (
+          ) : (mainView === 'kb' || mainView === 'library-kb') && session?.user?.email === process.env.NEXT_PUBLIC_ADMIN_EMAIL ? (
             <AdminKB session={session} />
-          ) : mainView === 'library-pending' ? (
+          ) : mainView === 'library-pending' && session?.user?.email === process.env.NEXT_PUBLIC_ADMIN_EMAIL ? (
             <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: 14 }}>
               Pending approval coming soon
             </div>
@@ -1172,7 +1215,7 @@ export default function Page() {
               <span className="tbar-title" style={{ marginLeft: 8 }}>
                 {activeConversationId ? 'Edvise' : 'Edvise'}
               </span>
-              {members.length > 1 && (
+              {ENABLE_TEAM_SHARING && members.length > 1 && (
                 <div
                   title={members.map(m => `${m.name}${m.role === 'owner' ? ' (owner)' : ''}`).join(', ')}
                   style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 14 }}
@@ -1196,7 +1239,7 @@ export default function Page() {
                   </span>
                 </div>
               )}
-              {conversationIdRef.current && (
+              {ENABLE_TEAM_SHARING && conversationIdRef.current && (
                 <button
                   className="tbar-btn"
                   onClick={openShareModal}
@@ -1234,6 +1277,10 @@ export default function Page() {
               onSuggestionClick={handleSuggestionClick}
               onFocusInput={() => setInputFocusTrigger(n => n + 1)}
               onAddNote={addNote}
+              onOpenArtifact={type => {
+                setPanelOpen(true)
+                setPanelTab(type)
+              }}
             />
 
             {remoteTyping && (
@@ -1264,7 +1311,7 @@ export default function Page() {
               focusTrigger={inputFocusTrigger}
               onGoogleSheetImport={handleGoogleSheetImport}
               sheetImporting={sheetImporting}
-              isShared={members.length > 1}
+              isShared={ENABLE_TEAM_SHARING && members.length > 1}
               onSendPlain={doSendPlain}
             />
           </>
@@ -1273,25 +1320,26 @@ export default function Page() {
 
       <RightPanel
         open={panelOpen}
-        expanded={panelExpanded}
+        width={panelWidth}
+        onWidthChange={setPanelWidth}
         onClose={() => setPanelOpen(false)}
-        onExpand={() => setPanelExpanded(e => !e)}
         tab={panelTab}
         onTabChange={setPanelTab}
         notes={notes}
         onDeleteNote={deleteNote}
         artifacts={artifacts}
         generating={generating}
-        onGenerate={handleGenerate}
+        onRequestGenerate={requestGenerateFromNotes}
         onSave={handleSaveArtifact}
         onDiscard={handleDiscardArtifact}
-        onOpenReportModal={(report, date, isNew) => setReportModal({ report, date, isNew })}
+        onComment={handleArtifactComment}
+        onArtifactChange={(type, updated) => setArtifacts(prev => ({ ...prev, [type]: updated }))}
         messages={messages}
-        showSharedAnalysis={members.length > 1}
+        showSharedAnalysis={ENABLE_TEAM_SHARING && members.length > 1}
       />
 
       {/* Share modal */}
-      {shareModalOpen && (
+      {ENABLE_TEAM_SHARING && shareModalOpen && (
         <div
           onClick={e => { if (e.target === e.currentTarget) setShareModalOpen(false) }}
           style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
@@ -1337,36 +1385,6 @@ export default function Page() {
               >
                 {sharing ? 'Sharing…' : 'Share'}
               </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Report modal */}
-      {reportModal && (
-        <div
-          onClick={e => { if (e.target === e.currentTarget) setReportModal(null) }}
-          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
-        >
-          <div style={{ background: 'white', borderRadius: 14, width: '100%', maxWidth: 720, height: '88vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 24px 64px rgba(0,0,0,0.2)' }}>
-            {/* Modal header */}
-            <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '10px 14px', borderBottom: '1px solid #f0f2f8', flexShrink: 0 }}>
-              <button
-                onClick={() => setReportModal(null)}
-                style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#9ca3af', fontSize: 18, lineHeight: 1, padding: '2px 6px' }}
-              >
-                ×
-              </button>
-            </div>
-            {/* Report content */}
-            <div style={{ flex: 1, overflow: 'hidden', padding: '0 24px' }}>
-              <ReportDetail
-                report={reportModal.report}
-                date={reportModal.date}
-                onClose={() => setReportModal(null)}
-                onSave={reportModal.isNew ? () => handleSaveArtifact('report') : undefined}
-                onDiscard={reportModal.isNew ? () => { handleDiscardArtifact('report'); setReportModal(null) } : undefined}
-              />
             </div>
           </div>
         </div>

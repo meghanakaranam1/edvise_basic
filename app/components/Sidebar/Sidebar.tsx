@@ -6,9 +6,13 @@ import type { Conversation } from '../../lib/db'
 import type { SupabaseSession } from '../../lib/supabase'
 
 type MainView = 'chat' | 'conversations' | 'library-kb' | 'library-all' | 'library-strategy' | 'library-reports' | 'library-pending'
-  | 'actions-plans' | 'actions-agendas' | 'actions-reports' | 'settings' | 'kb'
+  | 'actions' | 'settings' | 'kb'
 
 export type { MainView }
+
+// See ENABLE_TEAM_SHARING in page.tsx — same flag, kept in sync manually
+// since this reads the env var independently rather than via a prop.
+const ENABLE_TEAM_SHARING = process.env.NEXT_PUBLIC_ENABLE_SHARING === 'true'
 
 export default function Sidebar({
   session,
@@ -42,7 +46,9 @@ export default function Sidebar({
   useEffect(() => {
     if (!session?.user) { setConversations([]); setSharedConversations([]); return }
     listConversations().then(setConversations).catch(() => setConversations([]))
-    listSharedConversations().then(setSharedConversations).catch(() => setSharedConversations([]))
+    if (ENABLE_TEAM_SHARING) {
+      listSharedConversations().then(setSharedConversations).catch(() => setSharedConversations([]))
+    }
   }, [session?.user?.id, refreshKey])
 
   async function handleSignOut() {
@@ -82,29 +88,30 @@ export default function Sidebar({
           'Conversations')}
 
         <div className="sb-label" style={{ marginTop: 8 }}>My Library</div>
-        {nav('library-kb', mainView === 'library-kb',
+        {/* AdminKB (KB curation) and the pending-approval queue are both
+            admin-only moderation tools — not something a regular teacher
+            should see or use. library-all below is a separate, general
+            document view and stays visible to everyone. */}
+        {isAdmin && nav('library-kb', mainView === 'library-kb',
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" width="13" height="13"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>,
           'Knowledge base')}
         {nav('library-all', mainView === 'library-all',
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" width="13" height="13"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>,
           'All documents')}
-        {nav('library-pending', mainView === 'library-pending',
+        {isAdmin && nav('library-pending', mainView === 'library-pending',
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" width="13" height="13"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>,
           'Pending approval')}
 
-        <div className="sb-label" style={{ marginTop: 8 }}>My Actions</div>
-        {nav('actions-plans', mainView === 'actions-plans',
+        <div className="sb-label" style={{ marginTop: 8 }}>My Materials</div>
+        {/* One combined entry instead of three separate sub-tabs — the view
+            itself (ActionsView, in page.tsx) shows action plans, agendas,
+            and reports together in one list with type badges + filters. */}
+        {nav('actions', mainView === 'actions',
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" width="13" height="13"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>,
-          'Action plans', savedCounts.action_plan || undefined)}
-        {nav('actions-agendas', mainView === 'actions-agendas',
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" width="13" height="13"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>,
-          'Meeting agendas', savedCounts.agenda || undefined)}
-        {nav('actions-reports', mainView === 'actions-reports',
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" width="13" height="13"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>,
-          'Reports', savedCounts.report || undefined)}
+          'My Materials', (savedCounts.action_plan + savedCounts.agenda + savedCounts.report) || undefined)}
 
-        <div className="sb-label" style={{ marginTop: 8 }}>Team Workspace</div>
-        {sharedConversations.length === 0 ? (
+        {ENABLE_TEAM_SHARING && <div className="sb-label" style={{ marginTop: 8 }}>Team Workspace</div>}
+        {ENABLE_TEAM_SHARING && (sharedConversations.length === 0 ? (
           <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', padding: '4px 8px' }}>No shared conversations yet</div>
         ) : (
           sharedConversations.slice(0, 5).map(c => (
@@ -124,7 +131,7 @@ export default function Sidebar({
               </span>
             </div>
           ))
-        )}
+        ))}
 
         <div className="sb-label" style={{ marginTop: 16 }}>Recent</div>
         {conversations.length === 0 ? (

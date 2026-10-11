@@ -48,6 +48,14 @@ export async function createConversation(title: string, userId: string): Promise
   return data
 }
 
+export async function updateConversationTitle(conversationId: string, title: string) {
+  const { error } = await supabase
+    .from('conversations')
+    .update({ title })
+    .eq('id', conversationId)
+  if (error) console.error('updateConversationTitle error:', error)
+}
+
 export async function getConversationMessages(conversationId: string): Promise<DbMessage[]> {
   const { data, error } = await supabase
     .from('messages')
@@ -87,6 +95,27 @@ export async function getConversationFiles(conversationId: string): Promise<Conv
     .order('created_at', { ascending: true })
   if (error) return []
   return data ?? []
+}
+
+// Every file this user has uploaded, across their own (non-shared) personal
+// conversations — powers "All documents" in the sidebar. Deliberately scoped
+// to listConversations() only, NOT listSharedConversations() — the shared/
+// team-workspace schema (is_shared, conversation_members) doesn't exist in
+// production yet, and this needs to work standalone without that migration.
+export async function listAllUploadedFiles(): Promise<(ConversationFile & { conversationTitle: string })[]> {
+  const conversations = await listConversations()
+  if (!conversations.length) return []
+  const ids = conversations.map(c => c.id)
+  const titleById = new Map(conversations.map(c => [c.id, c.title]))
+
+  const { data, error } = await supabase
+    .from('conversation_files')
+    .select('*')
+    .in('conversation_id', ids)
+    .order('created_at', { ascending: false })
+  if (error) return []
+
+  return (data ?? []).map(f => ({ ...f, conversationTitle: titleById.get(f.conversation_id) ?? 'Untitled conversation' }))
 }
 
 // ── Artifacts ──────────────────────────────────────────────────────────────

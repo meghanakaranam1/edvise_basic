@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import NotesTab from './NotesTab'
 import ActionPlanTab from './ActionPlanTab'
 import AgendaTab from './AgendaTab'
@@ -15,8 +15,6 @@ const TABS: { id: string; label: string }[] = [
   { id: 'report',      label: 'Reports' },
 ]
 
-type ReportTemplate = 'full_analysis' | 'family_letter'
-
 const TYPE_COLOR: Record<ArtifactType, { accent: string; border: string; bg: string; check: string }> = {
   action_plan: { accent: '#15803d', border: '#86efac', bg: '#f0fdf4', check: '#16a34a' },
   agenda:      { accent: '#1b6070', border: '#7dd3e4', bg: '#f0f8fb', check: '#3E94A5' },
@@ -29,45 +27,78 @@ const TYPE_LABEL: Record<ArtifactType, string> = {
   report: 'Report',
 }
 
+const MIN_WIDTH = 320
+const MAX_WIDTH = 900
+
 export default function RightPanel({
   open,
-  expanded,
+  width,
+  onWidthChange,
   onClose,
-  onExpand,
   tab,
   onTabChange,
   notes,
   onDeleteNote,
   artifacts,
   generating,
-  onGenerate,
+  onRequestGenerate,
   onSave,
   onDiscard,
-  onOpenReportModal,
+  onComment,
+  onArtifactChange,
   messages,
   showSharedAnalysis,
 }: {
   open: boolean
-  expanded: boolean
+  width: number
+  onWidthChange: (w: number) => void
   onClose: () => void
-  onExpand: () => void
   tab: string
   onTabChange: (t: string) => void
   notes: Note[]
   onDeleteNote: (id: string) => void
   artifacts: Artifacts
   generating: string | null
-  onGenerate: (type: ArtifactType, noteIds: string[], reportTemplate?: ReportTemplate) => void
+  // ALL three types route through the real chat clarifying-question flow —
+  // none of them have a fixed template anymore, so Claude always needs to
+  // ask what the teacher wants (focus + format) before generating. See
+  // requestGenerateFromNotes in page.tsx.
+  onRequestGenerate: (type: ArtifactType, noteIds: string[]) => void
   onSave: (type: ArtifactType) => void
   onDiscard: (type: ArtifactType) => void
-  onOpenReportModal: (report: import('./types').Report, date: string, isNew: boolean) => void
+  // Reply to an anchored inline comment on an already-generated document —
+  // triggers a real, scoped regeneration round trip, not a local edit. See
+  // AnchoredComments for the full explanation. Resolves with a short summary
+  // of what changed, shown in the open thread.
+  onComment?: (type: ArtifactType, quotedText: string, comment: string) => Promise<string>
+  // Click-to-edit (see EditableText) fires this on every change so the
+  // parent's copy of the document stays in sync — without it, Save would
+  // persist the stale pre-edit version.
+  onArtifactChange?: (type: ArtifactType, updated: import('./types').GeneratedDocument) => void
   messages?: Message[]
   showSharedAnalysis?: boolean
 }) {
-  const tabs = showSharedAnalysis ? [...TABS, { id: 'shared_analysis', label: 'Shared Analysis' }] : TABS
+  const allTabs = showSharedAnalysis ? [...TABS, { id: 'shared_analysis', label: 'Shared Analysis' }] : TABS
   const [picking, setPicking] = useState<ArtifactType | null>(null)
+  // Notes (and Shared Analysis, when present) are always there. An Action
+  // plan/Agenda/Reports tab only shows up once that type actually has
+  // something in it — generated, currently generating, or the tab you're
+  // already on (so switching to it right as generation kicks off, via
+  // onTabChange in confirmGenerate below, doesn't flicker away before the
+  // content/generating state catches up). Nothing sits there empty by
+  // default. While picking notes for a specific document, this collapses
+  // further to just Notes — no tab to wander off to mid-selection — and
+  // reopens once you confirm or cancel.
+  const tabs = picking
+    ? allTabs.filter(t => t.id === 'notes')
+    : allTabs.filter(t =>
+        t.id === 'notes' ||
+        t.id === 'shared_analysis' ||
+        !!artifacts[t.id as ArtifactType] ||
+        generating === t.id ||
+        tab === t.id
+      )
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
-  const [reportTemplate, setReportTemplate] = useState<ReportTemplate>('full_analysis')
 
   function handleGenerate(type: ArtifactType) {
     setSelectedIds(new Set(notes.map(n => n.id)))
@@ -77,7 +108,15 @@ export default function RightPanel({
   function confirmGenerate() {
     if (!picking) return
     onTabChange(picking)
-    onGenerate(picking, [...selectedIds], picking === 'report' ? reportTemplate : undefined)
+    // All three types route through the real chat clarifying-question flow
+    // now, not direct generation — none of them have a fixed template
+    // anymore, so Claude always needs to ask what the teacher actually
+    // wants (focus, and how it should be formatted/organized) first. See
+    // requestGenerateFromNotes in page.tsx.
+    onRequestGenerate(picking, [...selectedIds])
+    // (handleGenerate below is RightPanel's own local picker-opening
+    // function — a different, same-named thing from the old onGenerate
+    // prop, which has been removed now that nothing generates directly.)
     setPicking(null)
   }
 
@@ -91,8 +130,41 @@ export default function RightPanel({
 
   const colors = picking ? TYPE_COLOR[picking] : TYPE_COLOR.action_plan
 
+  const draggingRef = useRef(false)
+  const [dragging, setDragging] = useState(false)
+
+  function startDrag(e: React.MouseEvent) {
+    e.preventDefault()
+    draggingRef.current = true
+    setDragging(true)
+    const startX = e.clientX
+    const startWidth = width
+
+    function onMove(ev: MouseEvent) {
+      if (!draggingRef.current) return
+      // Panel is on the right edge, so dragging left (negative dx) grows it.
+      const next = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, startWidth - (ev.clientX - startX)))
+      onWidthChange(next)
+    }
+    function onUp() {
+      draggingRef.current = false
+      setDragging(false)
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+  }
+
   return (
-    <aside className={`right-panel${open ? ' open' : ''}${expanded ? ' expanded' : ''}`}>
+    <aside className={`right-panel${open ? ' open' : ''}`} style={{ width: open ? width : 0, transition: dragging ? 'none' : undefined }}>
+      {open && (
+        <div
+          className="rp-resize-handle"
+          onMouseDown={startDrag}
+          title="Drag to resize"
+        />
+      )}
       {/* Tab row */}
       <div className="rp-tabs">
         {tabs.map(t => (
@@ -110,14 +182,6 @@ export default function RightPanel({
           </button>
         ))}
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 2, paddingRight: 6 }}>
-          <button className="tbar-btn" onClick={onExpand} title={expanded ? 'Collapse' : 'Expand'}>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" width="14" height="14">
-              {expanded
-                ? <><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="10" y1="14" x2="3" y2="21"/><line x1="21" y1="3" x2="14" y2="10"/></>
-                : <><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></>
-              }
-            </svg>
-          </button>
           <button className="tbar-btn" onClick={onClose} title="Close">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" width="14" height="14">
               <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
@@ -163,33 +227,6 @@ export default function RightPanel({
                 </div>
                 <span style={{ fontSize: 11, color: '#7a89b8' }}>{selectedIds.size} of {notes.length} selected</span>
               </div>
-
-              {/* Report template selector */}
-              {picking === 'report' && (
-                <div style={{ marginBottom: 14 }}>
-                  <div style={{ fontSize: 10, fontWeight: 700, color: '#7a89b8', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 8 }}>Report Template</div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                    {([
-                      { key: 'full_analysis', icon: '⊞', label: 'Full Analysis' },
-                      { key: 'family_letter', icon: '👤', label: 'Family Letter' },
-                    ] as const).map(t => (
-                      <button
-                        key={t.key}
-                        onClick={() => setReportTemplate(t.key)}
-                        style={{
-                          padding: '8px 10px', borderRadius: 8, border: `1px solid ${reportTemplate === t.key ? '#7c3aed' : '#e4e9f2'}`,
-                          background: reportTemplate === t.key ? '#ede9fe' : 'white',
-                          color: reportTemplate === t.key ? '#6c3fc5' : '#7a89b8',
-                          fontWeight: 600, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit',
-                          display: 'flex', alignItems: 'center', gap: 6,
-                        }}
-                      >
-                        <span style={{ fontSize: 14 }}>{t.icon}</span> {t.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                 <button
@@ -271,6 +308,8 @@ export default function RightPanel({
                 onGenerate={() => handleGenerate('action_plan')}
                 onSave={() => onSave('action_plan')}
                 onDiscard={() => onDiscard('action_plan')}
+                onComment={onComment ? (quotedText, comment) => onComment('action_plan', quotedText, comment) : undefined}
+                onChange={onArtifactChange ? updated => onArtifactChange('action_plan', updated) : undefined}
               />
             )}
             {tab === 'agenda' && (
@@ -280,6 +319,8 @@ export default function RightPanel({
                 onGenerate={() => handleGenerate('agenda')}
                 onSave={() => onSave('agenda')}
                 onDiscard={() => onDiscard('agenda')}
+                onComment={onComment ? (quotedText, comment) => onComment('agenda', quotedText, comment) : undefined}
+                onChange={onArtifactChange ? updated => onArtifactChange('agenda', updated) : undefined}
               />
             )}
             {tab === 'report' && (
@@ -289,7 +330,8 @@ export default function RightPanel({
                 onGenerate={() => handleGenerate('report')}
                 onSave={() => onSave('report')}
                 onDiscard={() => onDiscard('report')}
-                onOpenModal={onOpenReportModal}
+                onComment={onComment ? (quotedText, comment) => onComment('report', quotedText, comment) : undefined}
+                onChange={onArtifactChange ? updated => onArtifactChange('report', updated) : undefined}
               />
             )}
             {tab === 'shared_analysis' && (

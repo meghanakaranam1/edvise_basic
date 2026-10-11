@@ -13,6 +13,7 @@ export type KbDoc = {
   anthropic_file_id: string
   tags: string[]
   file_type: string
+  school_name: string | null
 }
 
 function tokenize(text: string): Set<string> {
@@ -39,20 +40,34 @@ function scoreDoc(doc: KbDoc, queryStems: Set<string>): number {
   return score
 }
 
-export async function searchKB(query: string, scopes: string[], topK = 4): Promise<KbDoc[]> {
+// userSchool scopes "school"-tagged documents to the requesting teacher's
+// own school — without it, every school's "school-based" uploads were
+// visible to every other school (confirmed: school_name was never even
+// recorded at upload, so nothing filtered on it). "global" docs are never
+// restricted — they're meant to be shared across every school by design.
+export async function searchKB(query: string, scopes: string[], topK = 4, userSchool?: string): Promise<KbDoc[]> {
   if (!scopes.length) return []
 
   const normalizedScopes = scopes.map(s => (s === 'student_success' ? 'global' : s))
 
   const { data, error } = await supabase
     .from('kb_documents')
-    .select('id, filename, scope, status, anthropic_file_id, tags, file_type')
+    .select('id, filename, scope, status, anthropic_file_id, tags, file_type, school_name')
     .eq('status', 'approved')
     .in('scope', normalizedScopes)
 
   if (error || !data?.length) return []
 
-  const docs = (data as KbDoc[]).filter(d => d.anthropic_file_id)
+  const normalizedUserSchool = userSchool?.trim().toLowerCase()
+  const docs = (data as KbDoc[]).filter(d => {
+    if (!d.anthropic_file_id) return false
+    if (d.scope !== 'school') return true
+    // A school-scoped doc with no recorded school (legacy rows from before
+    // this was tracked) is excluded rather than shown to everyone — safer
+    // default for FERPA-relevant content than leaking it school-wide.
+    if (!d.school_name || !normalizedUserSchool) return false
+    return d.school_name.trim().toLowerCase() === normalizedUserSchool
+  })
   if (!docs.length) return []
 
   const queryStems = tokenize(query)

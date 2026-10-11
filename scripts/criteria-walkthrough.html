@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Criteria card walkthrough</title>
+<style>
+  :root {
+    --navy: #2A3B7C;
+    --teal: #3E94A5;
+    --muted: #7a89b8;
+    --muted-2: #8a9bb8;
+    --border: #e4e9f2;
+    --border-soft: #f0f3fa;
+    --field-border: #d4dff7;
+    --bg: #f5f7fb;
+    --card-bg: #ffffff;
+    --row-bg: #f7f9fc;
+    --amber: #B45309;
+    --red: #c53030;
+    --green: #15803d;
+    --req-bg: #fffbea;
+    --req-border: #f3e2a9;
+    --req-text: #8a6d1d;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --navy: #c3cdfa;
+      --teal: #7fd4e3;
+      --muted: #9aa6d6;
+      --muted-2: #8e99c2;
+      --border: #30344a;
+      --border-soft: #2a2e42;
+      --field-border: #3c4568;
+      --bg: #14162238;
+      --bg: #11131d;
+      --card-bg: #1a1d2b;
+      --row-bg: #202333;
+      --amber: #e3a855;
+      --red: #f08383;
+      --green: #6fd99a;
+      --req-bg: #2a2512;
+      --req-border: #4a3f1a;
+      --req-text: #e3c96a;
+    }
+  }
+  :root[data-theme="dark"] {
+    --navy: #c3cdfa; --teal: #7fd4e3; --muted: #9aa6d6; --muted-2: #8e99c2;
+    --border: #30344a; --border-soft: #2a2e42; --field-border: #3c4568;
+    --bg: #11131d; --card-bg: #1a1d2b; --row-bg: #202333;
+    --amber: #e3a855; --red: #f08383; --green: #6fd99a;
+    --req-bg: #2a2512; --req-border: #4a3f1a; --req-text: #e3c96a;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--navy);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    padding: 16px;
+  }
+  .wrap { max-width: 560px; margin: 0 auto; }
+  h1 {
+    font-size: 16px;
+    font-weight: 700;
+    margin: 4px 0 2px;
+  }
+  .sub { font-size: 12.5px; color: var(--muted); margin: 0 0 18px; line-height: 1.5; }
+
+  .upload-chip {
+    display: inline-flex; align-items: center; gap: 7px;
+    background: var(--card-bg); border: 1px solid var(--field-border);
+    border-radius: 20px; padding: 6px 12px; font-size: 12px; color: var(--teal);
+    margin-bottom: 8px;
+  }
+  .upload-note { font-size: 11.5px; color: var(--muted); margin: 0 0 20px; }
+
+  .req-tag {
+    display: inline-block; font-size: 10px; font-weight: 700; letter-spacing: .03em;
+    text-transform: uppercase; color: var(--req-text); background: var(--req-bg);
+    border: 1px solid var(--req-border); border-radius: 6px; padding: 2px 7px;
+    margin-bottom: 6px;
+  }
+
+  .card {
+    border: 1px solid var(--border); border-radius: 12px; overflow: hidden;
+    background: var(--card-bg); max-width: 500px;
+    box-shadow: 0 1px 3px rgba(20,30,60,0.06);
+  }
+  .card-header {
+    padding: 12px 16px; border-bottom: 1px solid var(--border); background: var(--row-bg);
+  }
+  .card-title { font-size: 13px; font-weight: 700; color: var(--navy); }
+  .card-body { padding: 10px 16px 14px; }
+
+  .cat-block { padding: 10px 0; border-bottom: 1px solid var(--border-soft); }
+  .cat-block:last-of-type { border-bottom: none; }
+  .cat-label { font-size: 13px; font-weight: 600; color: var(--navy); display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .multi-note { font-size: 10px; color: var(--muted-2); margin: -2px 0 8px 16px; }
+
+  .sig-list { display: flex; flex-direction: column; gap: 12px; padding-left: 16px; }
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .row .label { font-size: 12px; color: var(--navy); }
+
+  select, input[type=number] {
+    border: 1px solid var(--field-border); border-radius: 8px; padding: 6px 10px;
+    font-size: 12px; color: var(--navy); background: var(--card-bg); min-width: 170px;
+    font-family: inherit;
+  }
+  input[type=number] { min-width: 70px; width: 70px; }
+  .custom-wrap { display: flex; align-items: center; gap: 6px; }
+  .use-preset-link {
+    font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer;
+    padding: 0; text-decoration: underline; font-family: inherit;
+  }
+
+  .cat-sublabel { font-size: 11px; color: var(--muted-2); margin-bottom: 4px; }
+  .checkbox-list { display: flex; flex-direction: column; gap: 4px; margin-bottom: 6px; }
+  .checkbox-list label { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--navy); cursor: pointer; }
+
+  .run-btn {
+    margin-top: 14px; background: none; border: none; color: var(--teal); font-weight: 600;
+    font-size: 13px; cursor: pointer; padding: 0; font-family: inherit;
+  }
+
+  .callout {
+    margin-top: 18px; font-size: 11.5px; color: var(--muted); line-height: 1.6;
+    background: var(--card-bg); border: 1px dashed var(--field-border); border-radius: 10px; padding: 10px 12px;
+  }
+  .callout b { color: var(--navy); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Criteria card — sample walkthrough</h1>
+  <p class="sub">Live reproduction of the real component (same markup/behavior as <code>CriteriaSettingCard.tsx</code>), filled with a sample multi-tab upload so you can click through and check it against your requirements. Nothing here calls the real app or your data.</p>
+
+  <span class="req-tag">Requirement — data upload: multi-tabs</span>
+  <div>
+    <div class="upload-chip">📎 Gradebook.xlsx — 2 sheets selected</div>
+  </div>
+  <p class="upload-note">Sheets: <b>Roster</b> (attendance + course grades, 1 row per student) &nbsp;·&nbsp; <b>Discipline Log</b> (incident records, kept as its own file — not merged into Roster)</p>
+
+  <span class="req-tag">Requirement — criteria reflects ABC + data structure, with "Other"</span>
+  <div class="card">
+    <div class="card-header"><span class="card-title">Set indicator criteria</span></div>
+    <div class="card-body" id="fields"></div>
+  </div>
+
+  <div class="callout">
+    <b>What to check:</b><br>
+    • Attendance — two signals, "ADA Q1" and "ADA Q2". Each dropdown option is a full phrase ("≥10% days missed"), so the meaning doesn't depend on a separate label next to it. Try opening the dropdown, and try <b>Other…</b> to see the custom input (it keeps "% days missed" visible next to the number).<br>
+    • Course failure — two signals (Math Grade, English Grade) — each subject gets its own independent cutoff, not one shared threshold.<br>
+    • Behavior — one signal from the <i>Discipline Log</i> sheet (not Roster), with real incident values as checkboxes.<br>
+    • The checkbox values shown for Behavior come specifically from the Discipline Log sheet's own data — not Roster's — which is the multi-tab bug that was just fixed.
+  </div>
+</div>
+
+<script>
+const PRESETS = {
+  rate: [5, 10, 15, 20],
+  count: [1, 2, 3],
+  catMin: [1, 2, 3],
+  grade: [50, 60, 65, 70],
+};
+
+const state = {
+  attQ1: { pct: 10, custom: false },
+  attQ2: { pct: 10, custom: true, value: 12 }, // pre-set into "Other" mode to show it off immediately
+  mathGrade: { grade: 60, custom: false },
+  engGrade: { grade: 60, custom: false },
+  behavior: { min: 1, custom: false, values: new Set(['In School Suspension']) },
+};
+
+const BEHAVIOR_OPTIONS = ['Parent Conference', 'Detention', 'In School Suspension', 'Out of School Suspension'];
+
+function presetOrOther(id, value, presets, format, opts) {
+  opts = opts || {};
+  const min = opts.min ?? 0;
+  if (state[id].custom) {
+    const v = opts.value !== undefined ? opts.value : value;
+    const suffixHtml = opts.suffix ? `<span style="font-size:12px;color:var(--navy)">${opts.suffix}</span>` : '';
+    return `<div class="custom-wrap">
+      <input type="number" min="${min}" value="${v}" oninput="onCustomInput('${id}', this.value)" />
+      ${suffixHtml}
+      <button type="button" class="use-preset-link" onclick="usePreset('${id}', ${presets[0]})">Use preset</button>
+    </div>`;
+  }
+  const options = presets.map(v => `<option value="${v}" ${v === value ? 'selected' : ''}>${format(v)}</option>`).join('');
+  return `<select onchange="onSelect('${id}', this.value)">${options}<option value="other">Other…</option></select>`;
+}
+
+function onSelect(id, val) {
+  if (val === 'other') { state[id].custom = true; render(); return; }
+  const n = Number(val);
+  if ('pct' in state[id]) state[id].pct = n;
+  else if ('grade' in state[id]) state[id].grade = n;
+  else if ('min' in state[id]) state[id].min = n;
+  render();
+}
+function onCustomInput(id, val) {
+  const n = Number(val);
+  if ('pct' in state[id]) state[id].pct = n;
+  else if ('grade' in state[id]) state[id].grade = n;
+  else if ('min' in state[id]) state[id].min = n;
+}
+function usePreset(id, first) {
+  state[id].custom = false;
+  if ('pct' in state[id]) state[id].pct = first;
+  else if ('grade' in state[id]) state[id].grade = first;
+  else if ('min' in state[id]) state[id].min = first;
+  render();
+}
+function toggleBehaviorValue(v) {
+  const set = state.behavior.values;
+  if (set.has(v)) set.delete(v); else set.add(v);
+  render();
+}
+
+function render() {
+  const el = document.getElementById('fields');
+  el.innerHTML = `
+    <div class="cat-block">
+      <div class="cat-label"><span class="dot" style="background:#3E94A5"></span>Attendance</div>
+      <div class="multi-note">Flagged if ANY of the following are met:</div>
+      <div class="sig-list">
+        <div class="row">
+          <span class="label">ADA Q1</span>
+          ${presetOrOther('attQ1', state.attQ1.pct, PRESETS.rate, v => `≥${v}% days missed`, { min: 1, value: state.attQ1.pct, suffix: '% days missed' })}
+        </div>
+        <div class="row">
+          <span class="label">ADA Q2</span>
+          ${presetOrOther('attQ2', state.attQ2.pct, PRESETS.rate, v => `≥${v}% days missed`, { min: 1, value: state.attQ2.pct, suffix: '% days missed' })}
+        </div>
+      </div>
+    </div>
+
+    <div class="cat-block">
+      <div class="cat-label"><span class="dot" style="background:#B45309"></span>Behavior</div>
+      <div class="sig-list">
+        <div>
+          <div class="cat-sublabel">Incident Outcome (Discipline Log) — which values count?</div>
+          <div class="checkbox-list">
+            ${BEHAVIOR_OPTIONS.map(v => `
+              <label>
+                <input type="checkbox" ${state.behavior.values.has(v) ? 'checked' : ''} onchange="toggleBehaviorValue('${v}')" />
+                ${v}
+              </label>`).join('')}
+          </div>
+          <div class="row">
+            <span class="label">Flag with</span>
+            ${presetOrOther('behavior', state.behavior.min, PRESETS.catMin, v => `≥${v} of these`, { min: 1, value: state.behavior.min })}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="cat-block">
+      <div class="cat-label"><span class="dot" style="background:#c53030"></span>Course failure</div>
+      <div class="multi-note">Flagged if ANY of the following are met:</div>
+      <div class="sig-list">
+        <div class="row">
+          <span class="label">Math Grade — below</span>
+          ${presetOrOther('mathGrade', state.mathGrade.grade, PRESETS.grade, v => `${v}`, { min: 0, value: state.mathGrade.grade })}
+        </div>
+        <div class="row">
+          <span class="label">English Grade — below</span>
+          ${presetOrOther('engGrade', state.engGrade.grade, PRESETS.grade, v => `${v}`, { min: 0, value: state.engGrade.grade })}
+        </div>
+      </div>
+    </div>
+
+    <button type="button" class="run-btn">Run analysis with these criteria →</button>
+  `;
+}
+render();
+</script>
+</body>
+</html>

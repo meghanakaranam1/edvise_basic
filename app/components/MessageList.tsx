@@ -13,16 +13,23 @@ import StudentTableCard, { type StudentTableData } from './Cards/StudentTableCar
 import SELCard, { type SELData } from './Cards/SELCard'
 import ChartCard, { type ChartData } from './Cards/ChartCard'
 import BrainstormQCard, { type BrainstormQData } from './Cards/BrainstormQCard'
-import LongitudinalCard, { type LongitudinalData } from './Cards/LongitudinalCard'
 
 export type Message =
   | { role: 'user'; content: string; id?: string; senderName?: string }
-  | { role: 'assistant'; content: string; images?: string[]; csvs?: { filename: string; data: string }[]; tableCsvs?: { filename: string; csv: string }[]; sources?: Array<{ title: string; kind: 'kb' | 'web' | 'pdf'; url?: string; kbDocId?: string }>; id?: string }
+  | { role: 'assistant'; content: string; images?: string[]; csvs?: { filename: string; data: string }[]; tableCsvs?: { filename: string; csv: string }[]; sources?: Array<{ title: string; kind: 'kb' | 'web' | 'pdf'; url?: string; kbDocId?: string; fileId?: string; filename?: string }>; id?: string }
   | { role: 'assistant'; isLoading: true; id?: string }
   | { role: 'card'; type: 'data_confirm'; data: Parameters<typeof DataConfirmCard>[0]['data']; onConfirm: Parameters<typeof DataConfirmCard>[0]['onConfirm']; id?: string }
   | { role: 'card'; type: 'sheet_picker'; filename: string; sheets: SheetSummary[]; onConfirm: (idxs: number[]) => void; id?: string }
   | { role: 'card'; type: 'criteria'; columnMapping?: Record<string, string>; columnUniques?: Record<string, string[]>; indicators?: import('../api/suggest-columns/route').Indicators; onConfirm: (t: Thresholds) => void; id?: string }
   | { role: 'card'; type: 'brainstorm_q'; data: BrainstormQData; onSubmit: (text: string) => void; id?: string }
+  // A reply sent via an anchored inline comment (see AnchoredComments.tsx)
+  // also shows up here as its own distinct entry — not a normal chat turn —
+  // mirroring claude.ai's "Comment on [doc] sent to Claude" pattern. status
+  // drives whether it shows a typing indicator or the finished summary +
+  // artifact reference card. artifactType is which right-panel tab the
+  // reference card should reopen when clicked. quoted is the exact passage
+  // the comment was anchored to, shown above the comment text for context.
+  | { role: 'card'; type: 'comment_relay'; artifactType: 'action_plan' | 'agenda' | 'report'; artifactTitle: string; quoted?: string; text: string; status: 'sent' | 'done'; summary?: string; id: string }
 
 const AVATAR_PALETTE = ['#E8A928', '#1B3A6B', '#3E94A5', '#7c3aed', '#B45309', '#2E705E']
 function avatarColor(name: string): string {
@@ -116,27 +123,14 @@ function parseSuggestions(text: string): { text: string; questions: Suggestion[]
   return { text: clean, questions }
 }
 
-// Exported so page.tsx can special-case this exact click (same pattern as
-// "Brainstorm interventions") to show the variables/groups setup wizard
-// instead of sending it straight through — see handleSuggestionClick.
-export const LONGITUDINAL_STAGE_PROMPT = 'Show me the longitudinal trend across quarters for whichever criteria have more than one time point.'
-
 // Stage action buttons — computed from conversation history, not from model output
-const STAGE_ORDER = ['risk_overview', 'grade_comparison', 'subgroup', 'sel_overview', 'longitudinal_overview'] as const
+const STAGE_ORDER = ['risk_overview', 'grade_comparison', 'subgroup', 'sel_overview'] as const
 type StageType = typeof STAGE_ORDER[number]
 
 const STAGE_ACTIONS: Record<string, { label: string; prompt: string; needsKB: boolean }> = {
   grade_comparison: { label: 'Grade breakdown',  prompt: 'Grade breakdown',   needsKB: false },
   subgroup:         { label: 'Subgroup analysis', prompt: 'Subgroup analysis', needsKB: false },
   sel_overview:     { label: 'SEL overview',      prompt: 'SEL overview',      needsKB: false },
-  // A separate, directly-clickable button rather than something nested behind
-  // a "what do you want to do" gate after criteria — matches the "it doesn't
-  // have to be an analysis" / "just another tab, they can do anything
-  // anytime" framing from the design walkthrough. Only appears at all when
-  // the criteria actually contain a multi-quarter signal (see the system
-  // prompt) — Claude omits the card (and this button becomes a no-op message)
-  // if there's genuinely nothing longitudinal in the data.
-  longitudinal_overview: { label: 'Longitudinal analysis', prompt: LONGITUDINAL_STAGE_PROMPT, needsKB: false },
 }
 const BRAINSTORM_ACTION = {
   label: 'Brainstorm interventions',
@@ -183,8 +177,8 @@ function parseSourceSections(text: string): { kb: string | null; web: string | n
 // Legacy SourceTabs — only used when model writes <!--KB_START--> / <!--WEB_START--> markers
 function SourceTabs({ kb, web, kbSources, webSources }: {
   kb: string; web: string
-  kbSources: Array<{ title: string; kind: 'kb' | 'web' | 'pdf'; url?: string; kbDocId?: string }>
-  webSources: Array<{ title: string; kind: 'kb' | 'web' | 'pdf'; url?: string; kbDocId?: string }>
+  kbSources: Array<{ title: string; kind: 'kb' | 'web' | 'pdf'; url?: string; kbDocId?: string; fileId?: string; filename?: string }>
+  webSources: Array<{ title: string; kind: 'kb' | 'web' | 'pdf'; url?: string; kbDocId?: string; fileId?: string; filename?: string }>
 }) {
   const [active, setActive] = useState<'kb' | 'web'>('kb')
   const content = active === 'kb' ? kb : web
@@ -245,26 +239,29 @@ function SourceTabs({ kb, web, kbSources, webSources }: {
 // Sources section with tabs when both KB and web are present.
 // Numbers are global (KB [1]–[N], then web [N+1]–[M]) so inline [N] citations in text align.
 function SourcesSection({ sources, text }: {
-  sources: Array<{ title: string; kind: 'kb' | 'web' | 'pdf'; url?: string; kbDocId?: string }>
+  sources: Array<{ title: string; kind: 'kb' | 'web' | 'pdf'; url?: string; kbDocId?: string; fileId?: string; filename?: string }>
   text: string
 }) {
   const [activeTab, setActiveTab] = useState<'kb' | 'web'>('kb')
 
   // Retrieval doesn't imply usage — the model is told not to cite KB/web docs for
   // pure data-analysis answers, so only show sources it actually cited inline.
+  // Teacher-uploaded PDFs (kind 'pdf') are folded into the same "documents"
+  // bucket as KB — both are downloadable files, as opposed to web links.
   const indexed = sources
     .map((s, i) => ({ s, num: i + 1 }))
-    .filter(({ s, num }) => s.kind !== 'pdf' && text.includes(`[${num}]`))
+    .filter(({ num }) => text.includes(`[${num}]`))
 
-  const kbItems = indexed.filter(({ s }) => s.kind === 'kb')
+  const kbItems = indexed.filter(({ s }) => s.kind === 'kb' || s.kind === 'pdf')
   const webItems = indexed.filter(({ s }) => s.kind === 'web')
   const hasBoth = kbItems.length > 0 && webItems.length > 0
 
   if (!indexed.length) return null
 
-  function Chip({ s, num }: { s: { title: string; kind: 'kb' | 'web' | 'pdf'; url?: string; kbDocId?: string }; num: number }) {
+  function Chip({ s, num }: { s: { title: string; kind: 'kb' | 'web' | 'pdf'; url?: string; kbDocId?: string; fileId?: string; filename?: string }; num: number }) {
     const isWeb = s.kind === 'web' && s.url
     const isKbDownloadable = s.kind === 'kb' && s.kbDocId
+    const isPdfDownloadable = s.kind === 'pdf' && s.fileId
     const base: React.CSSProperties = {
       display: 'inline-flex', alignItems: 'center', gap: 4,
       fontSize: 11, padding: '3px 9px', borderRadius: 12, fontWeight: 500,
@@ -291,6 +288,17 @@ function SourcesSection({ sources, text }: {
     if (isKbDownloadable) {
       return (
         <a href={`/api/kb/download?id=${s.kbDocId}`} download
+          style={{ ...base, background: '#eef0f8', border: '1px solid #c5cce0', color: '#1B3A6B', textDecoration: 'none' }}>
+          {citeBadge}
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="10" height="10"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          {s.title}
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="9" height="9" style={{ opacity: 0.5 }}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        </a>
+      )
+    }
+    if (isPdfDownloadable) {
+      return (
+        <a href={`/api/files/download?id=${s.fileId}&filename=${encodeURIComponent(s.filename ?? s.title)}&type=pdf`} download
           style={{ ...base, background: '#eef0f8', border: '1px solid #c5cce0', color: '#1B3A6B', textDecoration: 'none' }}>
           {citeBadge}
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="10" height="10"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
@@ -385,18 +393,15 @@ export function parseCardParts(content: string): Part[] {
   return parts
 }
 
-export function renderCard(cardType: string, data: unknown, key: string | number) {
+export function renderCard(cardType: string, data: unknown, key: string | number, onAskRoster?: (prompt: string) => void) {
   if (cardType === 'risk_overview') {
-    return <RiskOverviewCard key={key} data={data as RiskOverviewData} />
+    return <RiskOverviewCard key={key} data={data as RiskOverviewData} onAskRoster={onAskRoster} />
   }
   if (cardType === 'grade_comparison') {
-    return <GradeComparisonCard key={key} data={data as GradeComparisonData} />
+    return <GradeComparisonCard key={key} data={data as GradeComparisonData} onAskRoster={onAskRoster} />
   }
   if (cardType === 'subgroup') {
     return <SubgroupCard key={key} data={data as SubgroupData} />
-  }
-  if (cardType === 'longitudinal_overview') {
-    return <LongitudinalCard key={key} data={data as LongitudinalData} />
   }
   if (cardType === 'student_table') {
     return <StudentTableCard key={key} data={data as StudentTableData} />
@@ -417,6 +422,7 @@ export default function MessageList({
   onSuggestionClick,
   onFocusInput,
   onAddNote,
+  onOpenArtifact,
 }: {
   messages: Message[]
   isStreaming: boolean
@@ -424,10 +430,15 @@ export default function MessageList({
   onSuggestionClick: (text: string, needsKB: boolean) => void
   onFocusInput?: () => void
   onAddNote?: (content: string) => void
+  // Reopens the right panel to the given artifact tab — fired when the
+  // teacher clicks a "Used Claude Docs" reference card (comment_relay),
+  // mirroring claude.ai's click-to-reopen-the-artifact behavior.
+  onOpenArtifact?: (type: 'action_plan' | 'agenda' | 'report') => void
 }) {
   const bottomRef = useRef<HTMLDivElement>(null)
   const threadRef = useRef<HTMLDivElement>(null)
   const autoScroll = useRef(true)
+  const prevCount = useRef(0)
 
   function onThreadScroll() {
     const el = threadRef.current
@@ -436,6 +447,19 @@ export default function MessageList({
   }
 
   useEffect(() => {
+    // A fresh send — whether typed or triggered from elsewhere in the app
+    // (e.g. "Generate Report" in the right panel) — always jumps to bottom,
+    // even if the thread was scrolled up reviewing earlier history. Checking
+    // the last message's role isn't enough: doSend appends the user message
+    // AND the empty assistant placeholder in one synchronous batch, so by the
+    // time this effect runs the last message is already the assistant
+    // placeholder, not 'user'. Comparing message count instead catches any
+    // new message(s) landing in a single commit, regardless of role. Without
+    // this, a message sent while scrolled away (easy to do: the right-panel
+    // buttons don't touch chat scroll at all) can silently land off-screen,
+    // making it look like nothing happened.
+    if (messages.length > prevCount.current) autoScroll.current = true
+    prevCount.current = messages.length
     if (autoScroll.current) {
       bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
     }
@@ -498,6 +522,48 @@ export default function MessageList({
           return (
             <div key={msg.id ?? i} className="msg-wrap user">
               <div className="user-bubble">{msg.content}</div>
+            </div>
+          )
+        }
+
+        if (msg.role === 'card' && msg.type === 'comment_relay') {
+          return (
+            <div key={msg.id} className="msg-wrap assistant" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ border: '1px solid #e4e9f2', borderRadius: 10, padding: '10px 13px', background: '#f7f9fc', maxWidth: '92%' }}>
+                <div style={{ fontSize: 10.5, color: '#7a89b8', marginBottom: 6 }}>Comment on &quot;{msg.artifactTitle}&quot; sent to Claude</div>
+                {msg.quoted && (
+                  <div style={{ fontSize: 11, color: '#9ca3af', fontStyle: 'italic', marginBottom: 6, borderLeft: '2px solid #f0c75e', paddingLeft: 8 }}>
+                    &ldquo;{msg.quoted.length > 90 ? msg.quoted.slice(0, 90) + '…' : msg.quoted}&rdquo;
+                  </div>
+                )}
+                <div style={{ fontSize: 12.5, color: '#2A3B7C' }}><b style={{ color: '#3E94A5' }}>@Claude</b> {msg.text}</div>
+              </div>
+              {msg.status === 'sent' && (
+                <div className="assistant-row">
+                  <div className="ev-av">Ev</div>
+                  <div className="typing"><span /><span /><span /></div>
+                </div>
+              )}
+              {msg.status === 'done' && (
+                <div className="assistant-row">
+                  <div className="ev-av">Ev</div>
+                  <div className="assistant-body">
+                    <div style={{ fontSize: 10.5, color: '#7a89b8', marginBottom: 6 }}>Used Claude Docs ›</div>
+                    <div
+                      onClick={() => onOpenArtifact?.(msg.artifactType)}
+                      role={onOpenArtifact ? 'button' : undefined}
+                      style={{ display: 'flex', alignItems: 'center', gap: 10, border: '1px solid #e4e9f2', borderRadius: 10, padding: '9px 12px', marginBottom: 8, maxWidth: 280, cursor: onOpenArtifact ? 'pointer' : 'default' }}
+                    >
+                      <div style={{ width: 30, height: 30, borderRadius: 7, background: '#f7f9fc', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, flexShrink: 0 }}>📄</div>
+                      <div>
+                        <div style={{ fontSize: 12.5, fontWeight: 600, color: '#2A3B7C' }}>{msg.artifactTitle}</div>
+                        <div style={{ fontSize: 10.5, color: '#7a89b8' }}>Claude Docs · Only you</div>
+                      </div>
+                    </div>
+                    {msg.summary && <div style={{ fontSize: 13, color: '#2A3B7C', lineHeight: 1.5 }}>{msg.summary}</div>}
+                  </div>
+                </div>
+              )}
             </div>
           )
         }
@@ -578,7 +644,7 @@ export default function MessageList({
                         <ReactMarkdown key={j} remarkPlugins={[remarkGfm]}>{part.content}</ReactMarkdown>
                       ) : null
                     ) : (
-                      renderCard(part.cardType, part.data, j)
+                      renderCard(part.cardType, part.data, j, (prompt) => onSuggestionClick(prompt, false))
                     )
                   )}
                   {msg.csvs?.map((csv, j) => (

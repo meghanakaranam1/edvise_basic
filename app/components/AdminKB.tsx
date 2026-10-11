@@ -11,6 +11,7 @@ type KbDoc = {
   file_type: string
   category: string | null
   created_at: string
+  school_name: string | null
 }
 
 type UploadProgress = {
@@ -177,7 +178,7 @@ export default function AdminKB({ session }: { session: SupabaseSession }) {
                     <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{doc.file_type?.toUpperCase()}</div>
                   </td>
                   <td style={{ padding: '10px 12px', color: 'var(--text-muted)', fontSize: 12 }}>
-                    {doc.scope === 'global' ? 'Student Success' : 'School'}
+                    {doc.scope === 'global' ? 'Student Success' : (doc.school_name ? `School: ${doc.school_name}` : 'School (unassigned)')}
                   </td>
                   <td style={{ padding: '10px 12px' }}>{statusBadge(doc.status)}</td>
                   <td style={{ padding: '10px 12px', maxWidth: 200 }}>
@@ -192,6 +193,13 @@ export default function AdminKB({ session }: { session: SupabaseSession }) {
                   </td>
                   <td style={{ padding: '10px 12px' }}>
                     <div style={{ display: 'flex', gap: 6 }}>
+                      <a
+                        href={`/api/kb/download?id=${doc.id}`}
+                        download
+                        style={{ fontSize: 11, padding: '3px 8px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', cursor: 'pointer', fontFamily: 'inherit', textDecoration: 'none' }}
+                      >
+                        Download
+                      </a>
                       {isAdmin && doc.status === 'pending' && (
                         <>
                           <button onClick={() => {

@@ -17,7 +17,7 @@ function sortGrades(grades: Grade[]) {
   })
 }
 
-export default function GradeComparisonCard({ data }: { data: GradeComparisonData }) {
+export default function GradeComparisonCard({ data, onAskRoster }: { data: GradeComparisonData; onAskRoster?: (prompt: string) => void }) {
   const grades = sortGrades(data?.grades ?? [])
   const [active, setActive] = useState(0)
 
@@ -60,7 +60,7 @@ export default function GradeComparisonCard({ data }: { data: GradeComparisonDat
         </div>
       </div>
       <div style={{ padding: 12 }}>
-        <RiskBody data={{ ...g, total: g.n }} scope="grade" />
+        <RiskBody data={{ ...g, total: g.n }} scope="grade" rosterScopeLabel={g.label} onAskRoster={onAskRoster} />
       </div>
     </div>
   )

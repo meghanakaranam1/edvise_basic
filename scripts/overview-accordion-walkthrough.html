@@ -1,0 +1,644 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Overview accordion walkthrough</title>
+<style>
+  :root {
+    --navy: #2A3B7C;
+    --teal: #3E94A5;
+    --muted: #7a89b8;
+    --muted-2: #8a9bb8;
+    --border: #e4e9f2;
+    --border-soft: #f0f3fa;
+    --card-bg: #ffffff;
+    --row-bg: #f7f9fc;
+    --amber: #B45309;
+    --amber-bg: #fffbeb;
+    --amber-border: #fbd38d;
+    --red: #c53030;
+    --red-bg: #fff5f5;
+    --red-border: #fed7d7;
+    --green: #276749;
+    --green-bg: #f0fff4;
+    --green-border: #9ae6b4;
+    --bg: #f5f7fb;
+    --req-bg: #fffbea;
+    --req-border: #f3e2a9;
+    --req-text: #8a6d1d;
+    --track: #eef2f8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --navy: #c3cdfa; --teal: #7fd4e3; --muted: #9aa6d6; --muted-2: #8e99c2;
+      --border: #30344a; --border-soft: #2a2e42; --card-bg: #1a1d2b; --row-bg: #202333;
+      --amber: #e3a855; --amber-bg: #2a2512; --amber-border: #4a3f1a;
+      --red: #f08383; --red-bg: #2a1616; --red-border: #4a1f1f;
+      --green: #6fd99a; --green-bg: #112a1c; --green-border: #1f4a30;
+      --bg: #11131d;
+      --req-bg: #2a2512; --req-border: #4a3f1a; --req-text: #e3c96a;
+      --track: #262a3c;
+    }
+  }
+  :root[data-theme="dark"] {
+    --navy: #c3cdfa; --teal: #7fd4e3; --muted: #9aa6d6; --muted-2: #8e99c2;
+    --border: #30344a; --border-soft: #2a2e42; --card-bg: #1a1d2b; --row-bg: #202333;
+    --amber: #e3a855; --amber-bg: #2a2512; --amber-border: #4a3f1a;
+    --red: #f08383; --red-bg: #2a1616; --red-border: #4a1f1f;
+    --green: #6fd99a; --green-bg: #112a1c; --green-border: #1f4a30;
+    --bg: #11131d;
+    --req-bg: #2a2512; --req-border: #4a3f1a; --req-text: #e3c96a;
+    --track: #262a3c;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--navy);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    padding: 16px;
+  }
+  .wrap { max-width: 560px; margin: 0 auto; }
+  h1 { font-size: 16px; font-weight: 700; margin: 4px 0 2px; }
+  .sub { font-size: 12.5px; color: var(--muted); margin: 0 0 16px; line-height: 1.5; }
+  .req-tag {
+    display: inline-block; font-size: 10px; font-weight: 700; letter-spacing: .03em;
+    text-transform: uppercase; color: var(--req-text); background: var(--req-bg);
+    border: 1px solid var(--req-border); border-radius: 6px; padding: 2px 7px; margin-bottom: 6px;
+  }
+
+  .card { border: 1px solid var(--border); border-radius: 12px; overflow: hidden; background: var(--card-bg); box-shadow: 0 1px 3px rgba(20,30,60,0.06); }
+  .card-header { padding: 12px 16px; border-bottom: 1px solid var(--border); background: var(--row-bg); display: flex; justify-content: space-between; align-items: center; }
+  .card-title { font-size: 11px; font-weight: 700; color: var(--navy); text-transform: uppercase; letter-spacing: .07em; }
+  .card-sub { font-size: 11px; color: var(--muted); }
+  .card-body { padding: 12px; }
+
+  .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 14px; }
+  .stat-box {
+    padding: 8px 10px; border-radius: 8px; cursor: pointer;
+    transition: box-shadow .12s, transform .12s;
+  }
+  .stat-box:hover { box-shadow: 0 0 0 1px currentColor inset; }
+  .stat-box.active { box-shadow: 0 0 0 2px currentColor inset; }
+  .stat-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 3px; display: flex; align-items: center; justify-content: space-between; }
+  .stat-click-hint { font-size: 8.5px; text-transform: none; letter-spacing: 0; opacity: .7; }
+  .stat-val { font-size: 20px; font-weight: 700; }
+  .stat-sub { font-size: 10px; margin-top: 2px; }
+
+  .roster-card { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; margin-bottom: 14px; }
+  .roster-head { padding: 9px 14px; background: var(--row-bg); border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+  .roster-title { font-size: 11px; font-weight: 700; color: var(--navy); text-transform: uppercase; letter-spacing: .06em; display: flex; align-items: center; gap: 8px; }
+  .roster-count { font-size: 11px; color: var(--muted); font-weight: 400; text-transform: none; letter-spacing: 0; }
+  .roster-close { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 13px; padding: 2px 4px; }
+  .roster-table-wrap { overflow-x: auto; }
+  table.roster { width: 100%; border-collapse: collapse; font-size: 11.5px; }
+  table.roster th { padding: 7px 12px; background: var(--row-bg); font-weight: 600; color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .04em; text-align: left; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  table.roster td { padding: 6px 12px; border-bottom: 1px solid var(--border-soft); color: var(--navy); white-space: nowrap; }
+  table.roster tr:nth-child(even) td { background: var(--row-bg); }
+  .flag-y { color: var(--red); font-weight: 700; }
+  .flag-n { color: var(--muted-2); }
+  .roster-note { padding: 7px 14px; font-size: 10.5px; color: var(--muted); border-top: 1px solid var(--border-soft); background: var(--row-bg); }
+
+  .thread { display: flex; flex-direction: column; gap: 10px; margin-top: 14px; }
+  .msg-row { display: flex; gap: 8px; }
+  .msg-row.user { justify-content: flex-end; }
+  .msg-bubble.user { background: var(--navy); color: #fff; padding: 8px 13px; border-radius: 14px 14px 2px 14px; font-size: 12.5px; max-width: 80%; }
+  .ev-av { width: 20px; height: 20px; border-radius: 50%; background: var(--teal); color: #fff; font-size: 9px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 2px; }
+  .msg-assistant-col { display: flex; flex-direction: column; gap: 6px; max-width: 86%; }
+  .typing { display: flex; gap: 3px; padding: 9px 13px; background: var(--card-bg); border: 1px solid var(--border); border-radius: 2px 14px 14px 14px; width: fit-content; }
+  .typing span { width: 5px; height: 5px; border-radius: 50%; background: var(--muted); opacity: .5; animation: blink 1.2s infinite; }
+  .typing span:nth-child(2) { animation-delay: .2s; }
+  .typing span:nth-child(3) { animation-delay: .4s; }
+  @keyframes blink { 0%, 80%, 100% { opacity: .3 } 40% { opacity: 1 } }
+  .assistant-reply-text { font-size: 12px; color: var(--navy); background: var(--card-bg); border: 1px solid var(--border); border-radius: 2px 14px 14px 14px; padding: 8px 13px; width: fit-content; }
+
+  .section-box { border: 1px solid var(--border-soft); border-radius: 10px; padding: 10px; margin-bottom: 10px; }
+  .section-label { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 8px; }
+
+  .ind-row { margin-bottom: 4px; }
+  .ind-row-head {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    padding: 4px 2px; border-radius: 6px; cursor: default;
+  }
+  .ind-row-head.expandable { cursor: pointer; }
+  .ind-row-head.expandable:hover { background: var(--row-bg); }
+  .ind-name-wrap { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; }
+  .chevron { font-size: 9px; color: var(--muted); transition: transform .15s; display: inline-block; width: 10px; }
+  .chevron.open { transform: rotate(90deg); }
+  .ind-count { font-size: 12px; color: var(--navy); font-variant-numeric: tabular-nums; }
+  .ind-track { height: 7px; background: var(--track); border-radius: 999px; overflow: hidden; margin: 4px 0 2px; }
+  .ind-fill { height: 100%; border-radius: 999px; opacity: .85; }
+
+  .sub-list {
+    max-height: 0; overflow: hidden; transition: max-height .2s ease;
+    padding-left: 18px; border-left: 2px solid var(--border-soft); margin-left: 4px;
+  }
+  .sub-list.open { max-height: 400px; }
+  .sub-row { padding: 6px 0; }
+  .sub-row-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
+  .sub-name { font-size: 11.5px; color: var(--navy); }
+  .sub-count { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .sub-track { height: 5px; background: var(--track); border-radius: 999px; overflow: hidden; }
+
+  .overlap-row {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    padding: 6px 8px; margin-top: 4px; border-radius: 6px;
+    background: var(--row-bg); border: 1px dashed var(--border);
+  }
+  .overlap-label { font-size: 11px; color: var(--muted); display: flex; align-items: center; gap: 5px; }
+  .overlap-count { font-size: 11px; color: var(--navy); font-weight: 600; font-variant-numeric: tabular-nums; }
+  .reconcile {
+    font-size: 10.5px; color: var(--muted); margin-top: 6px; padding-top: 6px;
+    border-top: 1px solid var(--border-soft); font-variant-numeric: tabular-nums;
+  }
+  .sub-fill { height: 100%; border-radius: 999px; opacity: .7; }
+
+  .callout {
+    margin-top: 16px; font-size: 11.5px; color: var(--muted); line-height: 1.6;
+    background: var(--card-bg); border: 1px dashed var(--border); border-radius: 10px; padding: 10px 12px;
+  }
+  .callout b { color: var(--navy); }
+
+  .section-gap { margin-top: 22px; }
+  .tab-row { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 4px; }
+  .tab-btn {
+    padding: 5px 12px; border-radius: 20px; border: 1px solid var(--border);
+    background: var(--card-bg); color: var(--muted); font-size: 12px; font-weight: 500;
+    cursor: pointer; display: flex; align-items: center; gap: 6px; font-family: inherit;
+  }
+  .tab-btn.active { font-weight: 700; }
+  .tab-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .tab-n { font-size: 10px; font-weight: 400; color: var(--muted); }
+
+  .group-row { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+  .group-head {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    padding: 10px 12px; cursor: pointer; background: var(--card-bg);
+  }
+  .group-head:hover { background: var(--row-bg); }
+  .group-name { font-size: 12px; font-weight: 700; color: var(--navy); }
+  .group-n { font-size: 10.5px; color: var(--muted); font-weight: 400; margin-left: 4px; }
+  .group-pct-wrap { display: flex; align-items: center; gap: 8px; }
+  .group-track { width: 110px; height: 7px; background: var(--track); border-radius: 3px; overflow: hidden; }
+  .group-fill { height: 100%; border-radius: 3px; }
+  .group-pct { font-size: 12px; font-weight: 600; color: var(--navy); }
+  .group-body { padding: 0 12px 12px; border-top: 1px solid var(--border); display: none; }
+  .group-body.open { display: block; }
+
+  .sel-pills { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 14px; border-bottom: 1px solid var(--border); }
+  .sel-pill {
+    display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 20px;
+    cursor: pointer; border: 1.5px solid var(--border); background: var(--row-bg); color: var(--muted);
+    font-size: 12px; font-weight: 600; font-family: inherit;
+  }
+  .sel-pill.active { border-color: #3E94A5; background: #eef8fb; color: #1b6070; }
+  .sel-pill-dot { width: 7px; height: 7px; border-radius: 50%; background: #c8d0e7; flex-shrink: 0; }
+  .sel-pill.active .sel-pill-dot { background: #3E94A5; }
+  .sel-sub-header { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); margin-bottom: 10px; }
+  .sel-legend { display: flex; gap: 16px; margin-bottom: 12px; flex-wrap: wrap; }
+  .sel-legend-item { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--muted); }
+  .sel-legend-swatch { width: 14px; height: 4px; border-radius: 2px; display: inline-block; }
+  .sel-row { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+  .sel-row-label { width: 150px; font-size: 12px; color: var(--navy); font-weight: 500; flex-shrink: 0; line-height: 1.3; }
+  .sel-bars { flex: 1; display: flex; flex-direction: column; gap: 4px; }
+  .sel-bar-track { height: 8px; background: var(--track); border-radius: 3px; overflow: hidden; }
+  .sel-bar-fill { height: 100%; border-radius: 3px; }
+  .sel-vals { display: flex; flex-direction: column; gap: 4px; min-width: 28px; text-align: right; }
+  .sel-val { font-size: 12px; font-weight: 700; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Overview dashboard — accordion walkthrough</h1>
+  <p class="sub">Live reproduction of the real School Overview card (same data/layout as <code>RiskOverviewCard.tsx</code>) — indicator rows are expandable (▶) for sub-variables, and now the 4 stat tiles at the top are clickable too: click one to see the matching students as a roster, same table style as the real roster/export feature.</p>
+
+  <span class="req-tag">Requirement — click a stat tile to see that roster</span>
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">School overview — 2,318 students</span>
+      <span class="card-sub">697 students · 30.1% flagged</span>
+    </div>
+    <div class="card-body">
+      <div class="stat-grid" id="stat-grid"></div>
+
+      <div class="section-box">
+        <div class="section-label">Risk indicators</div>
+        <div id="indicators"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="thread" id="thread"></div>
+
+  <div class="callout">
+    <b>What to check:</b><br>
+    • <b>Course Failure</b> has a ▶ because it's made of two signals in your data — Math Grade and English Grade. Click it: it expands to show each one's own count/%, instead of only one blended "Course Failure" number.<br>
+    • The <b>(any flag)</b> tag next to the category name is the plain-language cue that this isn't "only English" or "only Math" — a student counts toward Course Failure if either one applies. No overlap math shown; Math + English won't sum exactly to the parent total, and that's expected, not something that needs explaining inline.<br>
+    • <b>Chronic Absence</b> and <b>Suspensions</b> have no ▶ here because each currently comes from a single signal — nothing to break out. If a dataset had e.g. two attendance signals (Q1 + Q2), that row would get a ▶ too.<br>
+    • Click a stat tile ("Any flag," "All 3 flags," etc.) — instead of an inline table, it appends a simulated chat exchange below the card: a user-style message asking for that roster, a typing indicator, then the actual roster table as an assistant reply. That mirrors how the real app's existing roster/export feature already works (runs real code execution against your file, not a canned inline filter), rather than inventing a new UI pattern.
+  </div>
+
+  <div class="section-gap">
+    <span class="req-tag">Same accordion — Grade Breakdown</span>
+    <div class="card">
+      <div class="card-header" style="flex-direction: column; align-items: flex-start; gap: 10px;">
+        <span class="card-title">Grade breakdown</span>
+        <div class="tab-row" id="grade-tabs"></div>
+      </div>
+      <div class="card-body">
+        <div class="section-box" style="margin-bottom:0">
+          <div class="section-label">Risk indicators</div>
+          <div id="grade-indicators"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section-gap">
+    <span class="req-tag">Same accordion — Subgroup analysis</span>
+    <div class="card">
+      <div class="card-header"><span class="card-title">Subgroup — Race/Ethnicity</span></div>
+      <div class="card-body" style="display:flex; flex-direction:column; gap:8px;" id="subgroup-list"></div>
+    </div>
+  </div>
+
+  <div class="callout">
+    Same row markup, same <code>renderIndicatorList()</code> function, called three times with three different datasets (school-wide, per-grade, per-group) — proving it's genuinely one reusable piece, not three separate implementations that happen to look similar.
+  </div>
+
+  <div class="section-gap">
+    <span class="req-tag">SEL — On Track vs. ABC, not school average</span>
+    <div class="card">
+      <div class="card-header"><span class="card-title">SEL Factor Analysis</span></div>
+      <div class="sel-pills" id="sel-pills"></div>
+      <div class="card-body">
+        <div class="sel-sub-header" id="sel-subheader"></div>
+        <div class="sel-legend" id="sel-legend"></div>
+        <div id="sel-rows"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="callout">
+    <b>What changed:</b> the second bar used to be a flat "school average" — a number that mixes at-risk and not-at-risk students together, so it couldn't say much. Now it's specifically the <b>On Track</b> group (students with zero ABC flags), so every row is a direct comparison: does this SEL factor actually look different for students carrying an attendance/behavior/course-failure flag versus those who don't? "On Track" isn't itself selectable as a pill — comparing it to itself wouldn't mean anything.
+  </div>
+</div>
+
+<script>
+// ===== The one reusable accordion renderer — used for School, Grade, and Subgroup =====
+function renderIndicatorList(elId, indicators, openState, onToggle) {
+  const el = document.getElementById(elId);
+  el.innerHTML = indicators.map((ind, i) => {
+    const expandable = ind.sub.length > 1;
+    const isOpen = !!openState[i];
+    return `
+      <div class="ind-row">
+        <div class="ind-row-head ${expandable ? 'expandable' : ''}" ${expandable ? `onclick="${onToggle}(${i})"` : ''}>
+          <span class="ind-name-wrap" style="color:${ind.color}">
+            ${expandable ? `<span class="chevron ${isOpen ? 'open' : ''}">▶</span>` : '<span style="width:10px;display:inline-block"></span>'}
+            ${ind.name}${expandable ? ' <span style="font-weight:400;color:var(--muted)">(any flag)</span>' : ''}
+          </span>
+          <span class="ind-count">${ind.count.toLocaleString()} (${ind.pct}%)</span>
+        </div>
+        <div class="ind-track"><div class="ind-fill" style="width:${ind.pct}%;background:${ind.color}"></div></div>
+        ${expandable ? `
+          <div class="sub-list ${isOpen ? 'open' : ''}">
+            ${ind.sub.map(s => `
+              <div class="sub-row">
+                <div class="sub-row-head">
+                  <span class="sub-name">${s.name}</span>
+                  <span class="sub-count">${s.count.toLocaleString()} (${s.pct}%)</span>
+                </div>
+                <div class="sub-track"><div class="sub-fill" style="width:${s.pct}%;background:${ind.color}"></div></div>
+              </div>
+            `).join('')}
+          </div>
+        ` : ''}
+      </div>
+    `;
+  }).join('');
+}
+
+// ===== Clickable stat tiles -> roster drill-down =====
+const STUDENTS = [
+  { id: '100001', name: 'Flores, Grace',    grade: 8, failure: true,  absence: true,  suspension: true  },
+  { id: '100002', name: 'Wilson, Carlos',   grade: 6, failure: true,  absence: false, suspension: false },
+  { id: '100003', name: 'Lee, Emma',        grade: 8, failure: true,  absence: true,  suspension: false },
+  { id: '100004', name: 'Johnson, Ethan',   grade: 8, failure: false, absence: false, suspension: true  },
+  { id: '100005', name: 'Garcia, Ethan',    grade: 6, failure: false, absence: false, suspension: false },
+  { id: '100006', name: 'Rodriguez, Ethan', grade: 7, failure: true,  absence: false, suspension: false },
+  { id: '100007', name: 'Davis, Aaliyah',   grade: 7, failure: false, absence: true,  suspension: false },
+  { id: '100008', name: 'Kim, Destiny',     grade: 7, failure: false, absence: false, suspension: false },
+  { id: '100009', name: 'Nguyen, Ethan',    grade: 8, failure: false, absence: false, suspension: false },
+  { id: '100010', name: 'Brown, Liam',      grade: 7, failure: false, absence: false, suspension: false },
+];
+
+const STAT_TILES = [
+  { key: 'all',   label: 'Students',    val: '2,318', sub: 'enrolled',          bg: '--row-bg',   border: '--border',       color: '--navy',  filter: () => true },
+  { key: 'any',   label: 'Any flag',    val: '697',   sub: '30.1% of school',   bg: '--amber-bg', border: '--amber-border', color: '--amber', filter: s => s.failure || s.absence || s.suspension },
+  { key: 'all3',  label: 'All 3 flags', val: '39',    sub: '1.7% of school',    bg: '--red-bg',   border: '--red-border',   color: '--red',   filter: s => s.failure && s.absence && s.suspension },
+  { key: 'none',  label: 'No flags',    val: '1,621', sub: '69.9% of school',   bg: '--green-bg', border: '--green-border', color: '--green', filter: s => !s.failure && !s.absence && !s.suspension },
+];
+function renderStatGrid() {
+  const el = document.getElementById('stat-grid');
+  el.innerHTML = STAT_TILES.map(t => `
+    <div class="stat-box" style="background:var(${t.bg});border:1px solid var(${t.border});color:var(${t.color})" onclick="askForRoster('${t.key}')">
+      <div class="stat-label"><span>${t.label}</span><span class="stat-click-hint">view roster</span></div>
+      <div class="stat-val" style="color:var(${t.color})">${t.val}</div>
+      <div class="stat-sub" style="color:var(${t.color})">${t.sub}</div>
+    </div>
+  `).join('');
+}
+
+// ===== Thread (simulates: click tile -> user message -> typing -> assistant reply with roster card) =====
+let thread = [];
+let nextMsgId = 1;
+
+function rosterTableHtml(tile) {
+  const matches = STUDENTS.filter(tile.filter);
+  return `
+    <div class="roster-card">
+      <div class="roster-head">
+        <span class="roster-title">${tile.label} <span class="roster-count">— ${matches.length} of ${tile.key === 'all' ? '2,318' : matches.length} shown</span></span>
+      </div>
+      <div class="roster-table-wrap">
+        <table class="roster">
+          <thead>
+            <tr>
+              <th>Student ID</th><th>Name</th><th>Grade</th>
+              <th>Academic Failure</th><th>Chronic Absence</th><th>Suspensions</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${matches.map(s => `
+              <tr>
+                <td>${s.id}</td><td>${s.name}</td><td>${s.grade}</td>
+                <td class="${s.failure ? 'flag-y' : 'flag-n'}">${s.failure ? 'Yes' : '—'}</td>
+                <td class="${s.absence ? 'flag-y' : 'flag-n'}">${s.absence ? 'Yes' : '—'}</td>
+                <td class="${s.suspension ? 'flag-y' : 'flag-n'}">${s.suspension ? 'Yes' : '—'}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+      <div class="roster-note">Sample data — only ${STUDENTS.length} rows exist in this mockup. In the real app this is a live roster pulled from your actual file via code execution — same mechanism as the existing roster/export feature, same <code>StudentTableCard.tsx</code> rendering, sortable columns and CSV export included.</div>
+    </div>
+  `;
+}
+
+function askForRoster(key) {
+  const tile = STAT_TILES.find(t => t.key === key);
+  const userMsgText = tile.key === 'all'
+    ? 'Show me the full student roster'
+    : `Show me the roster of students with ${tile.label.toLowerCase()}`;
+  const typingId = nextMsgId++;
+  thread.push({ role: 'user', text: userMsgText });
+  thread.push({ role: 'assistant', id: typingId, typing: true });
+  renderThread();
+
+  setTimeout(() => {
+    const msg = thread.find(m => m.id === typingId);
+    msg.typing = false;
+    msg.replyText = `Here are the ${tile.key === 'all' ? 'enrolled students' : tile.label.toLowerCase() + ' students'}:`;
+    msg.html = rosterTableHtml(tile);
+    renderThread();
+  }, 700);
+}
+
+function renderThread() {
+  const el = document.getElementById('thread');
+  el.innerHTML = thread.map(m => {
+    if (m.role === 'user') {
+      return `<div class="msg-row user"><div class="msg-bubble user">${m.text}</div></div>`;
+    }
+    if (m.typing) {
+      return `<div class="msg-row"><div class="ev-av">Ev</div><div class="typing"><span></span><span></span><span></span></div></div>`;
+    }
+    return `
+      <div class="msg-row">
+        <div class="ev-av">Ev</div>
+        <div class="msg-assistant-col">
+          <div class="assistant-reply-text">${m.replyText}</div>
+          ${m.html}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+renderStatGrid();
+
+// ===== School overview =====
+const SCHOOL_INDICATORS = [
+  {
+    name: 'Academic Failure', color: '#c53030', count: 552, pct: 23.8,
+    sub: [
+      { name: 'Math Grade — below 60', count: 312, pct: 13.5 },
+      { name: 'English Grade — below 60', count: 289, pct: 12.5 },
+    ],
+  },
+  {
+    name: 'Chronic Absence', color: '#3E94A5', count: 212, pct: 9.2,
+    sub: [{ name: 'Attendance Rate — ≥10% days missed', count: 212, pct: 9.2 }],
+  },
+  {
+    name: 'Suspensions', color: '#B45309', count: 166, pct: 7.2,
+    sub: [{ name: 'Total Suspensions — ≥1', count: 166, pct: 7.2 }],
+  },
+];
+const schoolOpen = {};
+function toggleSchool(i) { schoolOpen[i] = !schoolOpen[i]; renderIndicatorList('indicators', SCHOOL_INDICATORS, schoolOpen, 'toggleSchool'); }
+renderIndicatorList('indicators', SCHOOL_INDICATORS, schoolOpen, 'toggleSchool');
+
+// ===== Grade breakdown — same accordion, scoped per grade tab =====
+const GRADES = [
+  {
+    label: 'Grade 6', n: 745, color: '#1565c0',
+    indicators: [
+      { name: 'Academic Failure', color: '#c53030', count: 151, pct: 20.3,
+        sub: [
+          { name: 'Math Grade — below 60', count: 98, pct: 13.2 },
+          { name: 'English Grade — below 60', count: 77, pct: 10.3 },
+        ] },
+      { name: 'Chronic Absence', color: '#3E94A5', count: 58, pct: 7.8,
+        sub: [{ name: 'Attendance Rate — ≥10% days missed', count: 58, pct: 7.8 }] },
+      { name: 'Suspensions', color: '#B45309', count: 31, pct: 4.2,
+        sub: [{ name: 'Total Suspensions — ≥1', count: 31, pct: 4.2 }] },
+    ],
+  },
+  {
+    label: 'Grade 7', n: 781, color: '#d32f2f',
+    indicators: [
+      { name: 'Academic Failure', color: '#c53030', count: 203, pct: 26.0,
+        sub: [
+          { name: 'Math Grade — below 60', count: 118, pct: 15.1 },
+          { name: 'English Grade — below 60', count: 109, pct: 14.0 },
+        ] },
+      { name: 'Chronic Absence', color: '#3E94A5', count: 79, pct: 10.1,
+        sub: [{ name: 'Attendance Rate — ≥10% days missed', count: 79, pct: 10.1 }] },
+      { name: 'Suspensions', color: '#B45309', count: 68, pct: 8.7,
+        sub: [{ name: 'Total Suspensions — ≥1', count: 68, pct: 8.7 }] },
+    ],
+  },
+  {
+    label: 'Grade 8', n: 792, color: '#2e7d32',
+    indicators: [
+      { name: 'Academic Failure', color: '#c53030', count: 198, pct: 25.0,
+        sub: [
+          { name: 'Math Grade — below 60', count: 96, pct: 12.1 },
+          { name: 'English Grade — below 60', count: 103, pct: 13.0 },
+        ] },
+      { name: 'Chronic Absence', color: '#3E94A5', count: 75, pct: 9.5,
+        sub: [{ name: 'Attendance Rate — ≥10% days missed', count: 75, pct: 9.5 }] },
+      { name: 'Suspensions', color: '#B45309', count: 67, pct: 8.5,
+        sub: [{ name: 'Total Suspensions — ≥1', count: 67, pct: 8.5 }] },
+    ],
+  },
+];
+let activeGrade = 0;
+const gradeOpen = {}; // keyed per-grade so switching tabs doesn't carry over open state
+function renderGradeTabs() {
+  const el = document.getElementById('grade-tabs');
+  el.innerHTML = GRADES.map((g, i) => `
+    <button type="button" class="tab-btn ${i === activeGrade ? 'active' : ''}" onclick="selectGrade(${i})" style="${i === activeGrade ? `border-color:${g.color};background:${g.color}18;color:${g.color}` : ''}">
+      <span class="tab-dot" style="background:${g.color}"></span>${g.label}<span class="tab-n">n=${g.n}</span>
+    </button>
+  `).join('');
+}
+function selectGrade(i) {
+  activeGrade = i;
+  renderGradeTabs();
+  if (!gradeOpen[i]) gradeOpen[i] = {};
+  renderIndicatorList('grade-indicators', GRADES[i].indicators, gradeOpen[i], `toggleGrade`);
+}
+function toggleGrade(subI) {
+  gradeOpen[activeGrade][subI] = !gradeOpen[activeGrade][subI];
+  renderIndicatorList('grade-indicators', GRADES[activeGrade].indicators, gradeOpen[activeGrade], 'toggleGrade');
+}
+renderGradeTabs();
+selectGrade(0);
+
+// ===== Subgroup analysis — same accordion, nested inside an expandable group panel =====
+const SUBGROUPS = [
+  {
+    name: 'Hispanic', n: 2407, any_flag_pct: 34.2,
+    indicators: [
+      { name: 'Academic Failure', color: '#c53030', count: 421, pct: 17.5,
+        sub: [
+          { name: 'Math Grade — below 60', count: 251, pct: 10.4 },
+          { name: 'English Grade — below 60', count: 238, pct: 9.9 },
+        ] },
+      { name: 'Chronic Absence', color: '#3E94A5', count: 189, pct: 7.9,
+        sub: [{ name: 'Attendance Rate — ≥10% days missed', count: 189, pct: 7.9 }] },
+      { name: 'Suspensions', color: '#B45309', count: 97, pct: 4.0,
+        sub: [{ name: 'Total Suspensions — ≥1', count: 97, pct: 4.0 }] },
+    ],
+  },
+];
+const subgroupPanelOpen = {};
+const subgroupIndOpen = {};
+function renderSubgroups() {
+  const el = document.getElementById('subgroup-list');
+  el.innerHTML = SUBGROUPS.map((g, gi) => {
+    const panelOpen = !!subgroupPanelOpen[gi];
+    return `
+      <div class="group-row">
+        <div class="group-head" onclick="toggleSubgroupPanel(${gi})">
+          <span class="group-name">${g.name}<span class="group-n">n=${g.n.toLocaleString()}</span></span>
+          <span class="group-pct-wrap">
+            <span class="group-track"><span class="group-fill" style="width:${g.any_flag_pct}%;background:#3E94A5"></span></span>
+            <span class="group-pct">${g.any_flag_pct}% flagged</span>
+            <span style="font-size:10px;color:var(--muted)">${panelOpen ? '▲' : '▼'}</span>
+          </span>
+        </div>
+        <div class="group-body ${panelOpen ? 'open' : ''}">
+          <div class="section-box" style="margin:10px 0 0">
+            <div class="section-label">Risk indicators</div>
+            <div id="subgroup-indicators-${gi}"></div>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+  SUBGROUPS.forEach((g, gi) => {
+    if (subgroupPanelOpen[gi] && document.getElementById(`subgroup-indicators-${gi}`)) {
+      if (!subgroupIndOpen[gi]) subgroupIndOpen[gi] = {};
+      renderIndicatorList(`subgroup-indicators-${gi}`, g.indicators, subgroupIndOpen[gi], `toggleSubgroupIndicator_${gi}`);
+      window[`toggleSubgroupIndicator_${gi}`] = (subI) => {
+        subgroupIndOpen[gi][subI] = !subgroupIndOpen[gi][subI];
+        renderIndicatorList(`subgroup-indicators-${gi}`, g.indicators, subgroupIndOpen[gi], `toggleSubgroupIndicator_${gi}`);
+      };
+    }
+  });
+}
+function toggleSubgroupPanel(gi) {
+  subgroupPanelOpen[gi] = !subgroupPanelOpen[gi];
+  renderSubgroups();
+}
+renderSubgroups();
+
+// ===== SEL analysis — On Track vs. ABC-flagged group, instead of school average =====
+const SEL_SCALE = { min: 1, max: 5 };
+const SEL_SCALES = ['Academic Engagement', 'School Connectedness', 'Adult Support', 'Academic Pressure', 'Caring Adults'];
+const SEL_ALL_GROUPS = [
+  { label: 'Chronically Absent', n: 349, scores: { 'Academic Engagement': 3.4, 'School Connectedness': 3.6, 'Adult Support': 3.5, 'Academic Pressure': 3.6, 'Caring Adults': 3.4 } },
+  { label: 'Suspended', n: 324, scores: { 'Academic Engagement': 3.3, 'School Connectedness': 3.5, 'Adult Support': 3.4, 'Academic Pressure': 3.5, 'Caring Adults': 3.3 } },
+  { label: 'Failing Courses', n: 1118, scores: { 'Academic Engagement': 3.5, 'School Connectedness': 3.7, 'Adult Support': 3.5, 'Academic Pressure': 3.7, 'Caring Adults': 3.5 } },
+  { label: 'On Track', n: 2816, scores: { 'Academic Engagement': 3.9, 'School Connectedness': 4.0, 'Adult Support': 3.8, 'Academic Pressure': 4.1, 'Caring Adults': 3.8 } },
+];
+const SEL_ON_TRACK = SEL_ALL_GROUPS.find(g => g.label === 'On Track');
+const SEL_GROUPS = SEL_ALL_GROUPS.filter(g => g !== SEL_ON_TRACK);
+let selActiveIdx = 0;
+
+function selBarPct(val) {
+  const range = (SEL_SCALE.max - SEL_SCALE.min) || 1;
+  return Math.max(0, Math.min(100, ((val - SEL_SCALE.min) / range) * 100));
+}
+
+function renderSelPills() {
+  const el = document.getElementById('sel-pills');
+  el.innerHTML = SEL_GROUPS.map((g, i) => `
+    <button type="button" class="sel-pill ${i === selActiveIdx ? 'active' : ''}" onclick="selSelect(${i})">
+      <span class="sel-pill-dot"></span>${g.label}
+      <span style="font-weight:700">${(Object.values(g.scores).reduce((a,b)=>a+b,0)/SEL_SCALES.length).toFixed(1)}</span>
+      <span style="font-size:10px;font-weight:400;opacity:.8">n=${g.n.toLocaleString()}</span>
+    </button>
+  `).join('');
+}
+
+function renderSelBody() {
+  const group = SEL_GROUPS[selActiveIdx];
+  document.getElementById('sel-subheader').textContent = `By Factor — ${group.label}`;
+  document.getElementById('sel-legend').innerHTML = `
+    <div class="sel-legend-item"><span class="sel-legend-swatch" style="background:#22a559"></span>On Track — no ABC flags (${SEL_ON_TRACK.n.toLocaleString()})</div>
+    <div class="sel-legend-item"><span class="sel-legend-swatch" style="background:#f97316"></span>${group.label} (${group.n.toLocaleString()})</div>
+  `;
+  document.getElementById('sel-rows').innerHTML = SEL_SCALES.map(scale => {
+    const onTrackVal = SEL_ON_TRACK.scores[scale];
+    const groupVal = group.scores[scale];
+    return `
+      <div class="sel-row">
+        <div class="sel-row-label">${scale}</div>
+        <div class="sel-bars">
+          <div class="sel-bar-track"><div class="sel-bar-fill" style="width:${selBarPct(onTrackVal)}%;background:#22a559"></div></div>
+          <div class="sel-bar-track"><div class="sel-bar-fill" style="width:${selBarPct(groupVal)}%;background:#f97316"></div></div>
+        </div>
+        <div class="sel-vals">
+          <span class="sel-val" style="color:#22a559">${onTrackVal.toFixed(1)}</span>
+          <span class="sel-val" style="color:#f97316">${groupVal.toFixed(1)}</span>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function selSelect(i) {
+  selActiveIdx = i;
+  renderSelPills();
+  renderSelBody();
+}
+
+renderSelPills();
+renderSelBody();
+</script>
+</body>
+</html>

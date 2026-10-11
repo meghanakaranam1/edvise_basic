@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Right panel tab walkthrough</title>
+<style>
+  :root {
+    --navy: #2A3B7C;
+    --teal: #3E94A5;
+    --muted: #7a89b8;
+    --muted-2: #8a9bb8;
+    --border: #e4e9f2;
+    --border-soft: #f0f3fa;
+    --card-bg: #ffffff;
+    --row-bg: #f7f9fc;
+    --bg: #f5f7fb;
+    --req-bg: #fffbea;
+    --req-border: #f3e2a9;
+    --req-text: #8a6d1d;
+    --plan-accent: #15803d; --plan-border: #86efac; --plan-bg: #f0fdf4; --plan-check: #16a34a;
+    --agenda-accent: #1b6070; --agenda-border: #7dd3e4; --agenda-bg: #f0f8fb; --agenda-check: #3E94A5;
+    --report-accent: #6c3fc5; --report-border: #c4b5fd; --report-bg: #faf5ff; --report-check: #7c3aed;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --navy: #c3cdfa; --teal: #7fd4e3; --muted: #9aa6d6; --muted-2: #8e99c2;
+      --border: #30344a; --border-soft: #2a2e42; --card-bg: #1a1d2b; --row-bg: #202333;
+      --bg: #11131d; --req-bg: #2a2512; --req-border: #4a3f1a; --req-text: #e3c96a;
+    }
+  }
+  :root[data-theme="dark"] {
+    --navy: #c3cdfa; --teal: #7fd4e3; --muted: #9aa6d6; --muted-2: #8e99c2;
+    --border: #30344a; --border-soft: #2a2e42; --card-bg: #1a1d2b; --row-bg: #202333;
+    --bg: #11131d; --req-bg: #2a2512; --req-border: #4a3f1a; --req-text: #e3c96a;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--navy);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    padding: 16px;
+  }
+  .wrap { max-width: 420px; margin: 0 auto; }
+  h1 { font-size: 16px; font-weight: 700; margin: 4px 0 2px; }
+  .sub { font-size: 12.5px; color: var(--muted); margin: 0 0 16px; line-height: 1.5; }
+  .req-tag {
+    display: inline-block; font-size: 10px; font-weight: 700; letter-spacing: .03em;
+    text-transform: uppercase; color: var(--req-text); background: var(--req-bg);
+    border: 1px solid var(--req-border); border-radius: 6px; padding: 2px 7px; margin-bottom: 6px;
+  }
+
+  .panel { border: 1px solid var(--border); border-radius: 12px; overflow: hidden; background: var(--card-bg); box-shadow: 0 1px 3px rgba(20,30,60,0.06); }
+  .rp-tabs { display: flex; border-bottom: 1px solid var(--border); background: var(--row-bg); }
+  .rp-tab {
+    padding: 10px 14px; font-size: 12.5px; font-weight: 600; color: var(--muted);
+    background: none; border: none; cursor: pointer; font-family: inherit;
+    border-bottom: 2px solid transparent; display: flex; align-items: center; gap: 5px;
+  }
+  .rp-tab.active { color: var(--teal); border-bottom-color: var(--teal); }
+  .rp-tab .count { font-size: 9px; font-weight: 700; background: var(--teal); color: #fff; border-radius: 10px; padding: 1px 5px; }
+
+  .rp-body { padding: 16px; min-height: 260px; }
+
+  .note-row { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; font-size: 12.5px; }
+  .note-text { color: var(--navy); margin-bottom: 8px; }
+  .gen-row { display: flex; gap: 6px; }
+  .gen-btn { font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 14px; cursor: pointer; font-family: inherit; border: 1px solid; }
+  .gen-plan { color: var(--plan-accent); border-color: var(--plan-border); background: var(--plan-bg); }
+  .gen-agenda { color: var(--agenda-accent); border-color: var(--agenda-border); background: var(--agenda-bg); }
+  .gen-report { color: var(--report-accent); border-color: var(--report-border); background: var(--report-bg); }
+
+  .picker-box { border: 1px dashed var(--border); border-radius: 10px; padding: 14px 16px; background: var(--row-bg); }
+  .picker-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+  .picker-title { font-weight: 600; font-size: 13px; }
+  .picker-close { border: none; background: none; cursor: pointer; color: var(--muted); font-size: 16px; line-height: 1; }
+  .picker-controls { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; font-size: 12px; }
+  .picker-link { border: none; background: none; cursor: pointer; font-weight: 600; font-size: 12px; padding: 0; }
+  .picker-note { display: flex; align-items: flex-start; gap: 8px; padding: 6px 0; font-size: 12.5px; }
+  .confirm-btn { margin-top: 10px; width: 100%; padding: 8px; border-radius: 8px; border: none; font-weight: 700; font-size: 12.5px; cursor: pointer; color: #fff; }
+
+  .callout {
+    margin-top: 16px; font-size: 11.5px; color: var(--muted); line-height: 1.6;
+    background: var(--card-bg); border: 1px dashed var(--border); border-radius: 10px; padding: 10px 12px;
+  }
+  .callout b { color: var(--navy); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Right panel — tabs during note selection</h1>
+  <p class="sub">Live reproduction of the Notes &amp; Artifacts panel (<code>RightPanel.tsx</code>). Click a "Generate" button below to enter note-picking mode and see what happens to the tab row.</p>
+
+  <span class="req-tag">Requirement — hide the other tabs while picking notes</span>
+
+  <div class="panel">
+    <div class="rp-tabs" id="rp-tabs"></div>
+    <div class="rp-body" id="rp-body"></div>
+  </div>
+
+  <div class="callout">
+    <b>What to check:</b><br>
+    • Normally all 4 tabs show: <b>Notes · Action plan · Agenda · Reports</b>.<br>
+    • Click <b>Generate Action Plan</b> on a note (or any of the three generate buttons) — the tab row collapses down to just <b>Notes</b> while you're mid-selection. You can't accidentally click "Agenda" or "Reports" and wander off before finishing.<br>
+    • Click the <b>×</b> on the picker, or <b>Create</b> to confirm — the full 4-tab row comes back.
+  </div>
+</div>
+
+<script>
+const NOTES = [
+  { id: 1, text: 'Marcus — missed 9 days this quarter, flag for attendance check-in' },
+  { id: 2, text: 'Grade 7 math scores dropped after winter break, worth a team discussion' },
+];
+
+let picking = null; // null | 'plan' | 'agenda' | 'report'
+let selected = new Set(NOTES.map(n => n.id));
+
+const KIND = {
+  plan:   { label: 'Action Plan', accent: 'var(--plan-accent)', btn: 'var(--plan-check)' },
+  agenda: { label: 'Agenda',      accent: 'var(--agenda-accent)', btn: 'var(--agenda-check)' },
+  report: { label: 'Report',      accent: 'var(--report-accent)', btn: 'var(--report-check)' },
+};
+
+const ALL_TABS = [
+  { id: 'notes', label: 'Notes', countBadge: true },
+  { id: 'plan', label: 'Action plan' },
+  { id: 'agenda', label: 'Agenda' },
+  { id: 'report', label: 'Reports' },
+];
+
+function renderTabs() {
+  const el = document.getElementById('rp-tabs');
+  // While picking, only the Notes tab shows — the other three are removed
+  // from the row entirely (not just disabled), so there's nothing to
+  // navigate away to mid-selection.
+  const tabs = picking ? ALL_TABS.filter(t => t.id === 'notes') : ALL_TABS;
+  el.innerHTML = tabs.map(t => `
+    <button type="button" class="rp-tab ${t.id === 'notes' ? 'active' : ''}">
+      ${t.label}
+      ${t.countBadge ? `<span class="count">${NOTES.length}</span>` : ''}
+    </button>
+  `).join('');
+}
+
+function startPicking(kind) {
+  picking = kind;
+  selected = new Set(NOTES.map(n => n.id));
+  renderTabs();
+  renderBody();
+}
+
+function closePicking() {
+  picking = null;
+  renderTabs();
+  renderBody();
+}
+
+function toggleNote(id) {
+  if (selected.has(id)) selected.delete(id); else selected.add(id);
+  renderBody();
+}
+
+function renderBody() {
+  const el = document.getElementById('rp-body');
+
+  if (picking) {
+    const k = KIND[picking];
+    el.innerHTML = `
+      <div class="picker-box">
+        <div class="picker-head">
+          <span class="picker-title" style="color:${k.accent}">Select notes for ${k.label}</span>
+          <button class="picker-close" onclick="closePicking()">×</button>
+        </div>
+        <div class="picker-controls">
+          <div>
+            <button class="picker-link" style="color:${k.accent}" onclick="selected = new Set(NOTES.map(n=>n.id)); renderBody()">Select all</button>
+            <span style="color:var(--muted);margin:0 6px">·</span>
+            <button class="picker-link" style="color:${k.accent}" onclick="selected = new Set(); renderBody()">Clear</button>
+          </div>
+          <span style="color:var(--muted)">${selected.size} of ${NOTES.length} selected</span>
+        </div>
+        ${NOTES.map(n => `
+          <label class="picker-note">
+            <input type="checkbox" ${selected.has(n.id) ? 'checked' : ''} onchange="toggleNote(${n.id})" />
+            ${n.text}
+          </label>
+        `).join('')}
+        <button class="confirm-btn" style="background:${k.accent}" onclick="closePicking()">Create ${k.label} →</button>
+      </div>
+    `;
+    return;
+  }
+
+  el.innerHTML = `
+    <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">Notes</div>
+    ${NOTES.map(n => `
+      <div class="note-row">
+        <div class="note-text">${n.text}</div>
+        <div class="gen-row">
+          <button class="gen-btn gen-plan" onclick="startPicking('plan')">Generate Action Plan</button>
+          <button class="gen-btn gen-agenda" onclick="startPicking('agenda')">Generate Agenda</button>
+          <button class="gen-btn gen-report" onclick="startPicking('report')">Generate Report</button>
+        </div>
+      </div>
+    `).join('')}
+  `;
+}
+
+renderTabs();
+renderBody();
+</script>
+</body>
+</html>
