@@ -1,9 +1,4 @@
-import { createClient } from '@supabase/supabase-js'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_KEY!,
-)
+import { supabaseAdmin } from './supabaseAdmin'
 
 export type KbDoc = {
   id: string
@@ -50,7 +45,7 @@ export async function searchKB(query: string, scopes: string[], topK = 4, userSc
 
   const normalizedScopes = scopes.map(s => (s === 'student_success' ? 'global' : s))
 
-  const { data, error } = await supabase
+  const { data, error } = await supabaseAdmin()
     .from('kb_documents')
     .select('id, filename, scope, status, anthropic_file_id, tags, file_type, school_name')
     .eq('status', 'approved')

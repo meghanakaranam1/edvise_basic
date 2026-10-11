@@ -1,10 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_KEY!,
-)
+import { supabaseAdmin } from '../../../lib/supabaseAdmin'
 
 // Downloads a previously-uploaded conversation file (gradebook CSV, PDF, …)
 // from Supabase Storage, where /api/upload keeps a copy specifically for
@@ -18,7 +13,7 @@ export async function GET(req: NextRequest) {
   const fileType = req.nextUrl.searchParams.get('type') ?? ''
   if (!fileId) return NextResponse.json({ error: 'Missing id' }, { status: 400 })
 
-  const { data, error } = await supabase.storage.from('documents').download(`conversations/${fileId}`)
+  const { data, error } = await supabaseAdmin().storage.from('documents').download(`conversations/${fileId}`)
   if (error || !data) return NextResponse.json({ error: 'File not available' }, { status: 404 })
 
   const contentType = fileType === 'pdf' ? 'application/pdf' : fileType === 'csv' ? 'text/csv' : 'application/octet-stream'

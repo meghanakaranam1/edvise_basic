@@ -1,12 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
-import { createClient } from "@supabase/supabase-js";
+import { supabaseAdmin } from "../../lib/supabaseAdmin";
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_KEY!,
-);
 
 const MIME_BY_EXT: Record<string, string> = {
   pdf: "application/pdf",
@@ -44,7 +40,7 @@ export async function POST(req: NextRequest) {
     // Awaited (not fire-and-forget) — a serverless function can be frozen
     // the instant it returns a response, which would silently drop an
     // un-awaited background write.
-    const { error: storageError } = await supabase.storage
+    const { error: storageError } = await supabaseAdmin().storage
       .from('documents')
       .upload(`conversations/${fileId}`, bytes, { contentType: mimeType, upsert: true })
     if (storageError) console.error('Storage copy failed (non-fatal — Claude still has the file):', storageError.message)

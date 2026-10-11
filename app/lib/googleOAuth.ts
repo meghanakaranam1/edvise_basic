@@ -1,10 +1,5 @@
 import crypto from "crypto";
-import { createClient } from "@supabase/supabase-js";
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_KEY!,
-);
+import { supabaseAdmin } from "./supabaseAdmin";
 
 // drive.file: lets the Picker grant access to only the specific sheet a teacher selects.
 // spreadsheets.readonly: lets the Sheets API actually read that sheet's values.
@@ -101,7 +96,7 @@ function refreshAccessToken(refreshToken: string) {
 }
 
 export async function storeRefreshToken(userId: string, refreshToken: string) {
-  const { error } = await supabase.from("profiles").update({ google_refresh_token: refreshToken }).eq("id", userId);
+  const { error } = await supabaseAdmin().from("profiles").update({ google_refresh_token: refreshToken }).eq("id", userId);
   if (error) throw error;
 }
 
@@ -110,14 +105,14 @@ export async function storeRefreshToken(userId: string, refreshToken: string) {
 // revoked or expired, in which case it's cleared so the teacher is prompted to
 // reconnect instead of seeing a raw Google error.
 export async function getValidGoogleAccessToken(userId: string): Promise<string | null> {
-  const { data, error } = await supabase.from("profiles").select("google_refresh_token").eq("id", userId).single();
+  const { data, error } = await supabaseAdmin().from("profiles").select("google_refresh_token").eq("id", userId).single();
   if (error || !data?.google_refresh_token) return null;
   try {
     const { access_token } = await refreshAccessToken(data.google_refresh_token);
     return access_token;
   } catch (err) {
     if (err instanceof GoogleGrantInvalidError) {
-      await supabase.from("profiles").update({ google_refresh_token: null }).eq("id", userId);
+      await supabaseAdmin().from("profiles").update({ google_refresh_token: null }).eq("id", userId);
       return null;
     }
     throw err;

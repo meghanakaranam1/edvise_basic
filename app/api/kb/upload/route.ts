@@ -1,12 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
-import { createClient } from '@supabase/supabase-js'
+import { supabaseAdmin } from '../../../lib/supabaseAdmin'
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_KEY!,
-)
 
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL ?? ''
 
@@ -55,7 +51,7 @@ export async function POST(req: NextRequest) {
   const token = authHeader.replace('Bearer ', '').trim()
   if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { data: { user } } = await supabase.auth.getUser(token)
+  const { data: { user } } = await supabaseAdmin().auth.getUser(token)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const form = await req.formData()
@@ -103,7 +99,7 @@ export async function POST(req: NextRequest) {
   // "global" docs intentionally have no single owning school.
   const schoolName = scope === 'school' ? (user.user_metadata?.school_name ?? null) : null
 
-  const { data, error } = await supabase.from('kb_documents').insert({
+  const { data, error } = await supabaseAdmin().from('kb_documents').insert({
     filename,
     scope,
     school_name: schoolName,
@@ -125,7 +121,7 @@ export async function POST(req: NextRequest) {
   // fire-and-forget — a serverless function can be frozen the instant it
   // returns a response.
   const mimeType = ext === 'pdf' ? 'application/pdf' : ext === 'csv' ? 'text/csv' : 'text/plain'
-  const { error: storageError } = await supabase.storage
+  const { error: storageError } = await supabaseAdmin().storage
     .from('documents')
     .upload(`kb/${data.id}`, buf, { contentType: mimeType, upsert: true })
   if (storageError) console.error('Storage copy failed (non-fatal — Claude still has the file):', storageError.message)

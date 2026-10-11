@@ -1,11 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
 import { verifySupabaseUser } from "../../../../lib/auth";
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_KEY!,
-);
+import { supabaseAdmin } from "../../../../lib/supabaseAdmin";
 
 // Inserts the creator's own "owner" row right after a conversation is
 // created. Done server-side with the service-role key (bypassing RLS)
@@ -22,7 +17,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const { id: conversationId } = await params;
 
-  const { data: conversation } = await supabase
+  const { data: conversation } = await supabaseAdmin()
     .from("conversations")
     .select("user_id")
     .eq("id", conversationId)
@@ -31,7 +26,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: "Not the owner of this conversation" }, { status: 403 });
   }
 
-  const { error } = await supabase
+  const { error } = await supabaseAdmin()
     .from("conversation_members")
     .insert({ conversation_id: conversationId, user_id: user.id, role: "owner" });
   // 23505 = unique violation — the row already exists (e.g. a retry), which
@@ -47,7 +42,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
   const { id: conversationId } = await params;
 
-  const { data: membership } = await supabase
+  const { data: membership } = await supabaseAdmin()
     .from("conversation_members")
     .select("user_id")
     .eq("conversation_id", conversationId)
@@ -55,14 +50,14 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     .maybeSingle();
   if (!membership) return NextResponse.json({ error: "Not a member of this conversation" }, { status: 403 });
 
-  const { data: members, error } = await supabase
+  const { data: members, error } = await supabaseAdmin()
     .from("conversation_members")
     .select("user_id, role, added_at")
     .eq("conversation_id", conversationId);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   const userIds = (members ?? []).map(m => m.user_id);
-  const { data: profiles } = await supabase.from("profiles").select("id, name, email").in("id", userIds);
+  const { data: profiles } = await supabaseAdmin().from("profiles").select("id, name, email").in("id", userIds);
   const profileById = Object.fromEntries((profiles ?? []).map(p => [p.id, p]));
 
   const result = (members ?? []).map(m => ({
