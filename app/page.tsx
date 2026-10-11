@@ -100,6 +100,15 @@ export default function Page() {
   // Caps the false-completion auto-retry below to one attempt per turn, so
   // a model that keeps failing to call update_plan can't loop forever.
   const retriedFalseCompletionRef = useRef(false)
+  // Tracks which document type a generate-from-notes flow is working
+  // toward, from the moment it's triggered until update_plan actually
+  // fires. Used to detect a dead-end turn — the model answers the last
+  // clarifying question and then produces NEITHER another question NOR
+  // update_plan NOR even any text, just silence. That's a distinct failure
+  // from writing a false "ready in the panel" confirmation (which at least
+  // has text to pattern-match on) — this one has nothing to match, so it
+  // needed its own tracked-state detection rather than a text regex.
+  const awaitingGenerateRef = useRef<ArtifactType | null>(null)
 
   // Sidebar
   const [mainView, setMainView] = useState<MainView>('chat')
@@ -548,27 +557,43 @@ export default function Page() {
       // Auto-generate artifact in the right panel if the model called update_plan
       if (pendingGenerate) {
         retriedFalseCompletionRef.current = false
+        awaitingGenerateRef.current = null
         setPanelOpen(true)
         setPanelTab(pendingGenerate)
         const scopedNoteIds = manualGenerateNoteIdsRef.current ?? undefined
         manualGenerateNoteIdsRef.current = null
         handleGenerate(pendingGenerate, scopedNoteIds)
-      } else if (/ready in the panel/i.test(accumulated) && !retriedFalseCompletionRef.current) {
-        // Safety net: the model is instructed to write this confirmation
-        // ONLY after actually calling update_plan in the same turn, but it
-        // occasionally writes the confirmation as plain text without the
-        // tool call — confirmed live, across all three document types. Left
-        // alone, the teacher sees a cheerful "ready in the panel!" message
-        // next to a permanently empty panel, with zero indication anything
-        // went wrong. One hidden, auto-sent correction turn, capped at a
-        // single retry so a model that keeps failing can't loop forever.
+      } else if (pendingToolCall) {
+        // Another clarifying question — the flow is still progressing
+        // normally, nothing to detect here.
+      } else if (awaitingGenerateRef.current && !retriedFalseCompletionRef.current) {
+        // Safety net: we were mid-generate-flow (requestGenerateFromNotes or
+        // the typed-path match set this), the teacher just answered what
+        // should have been the final question, and this turn produced
+        // NEITHER another question NOR update_plan — dead silence, or (less
+        // often) a false "ready in the panel" confirmation with no tool
+        // call behind it. Either way the panel stays empty with no
+        // indication anything went wrong. One hidden, auto-sent correction
+        // turn, capped at a single retry so a model that keeps failing
+        // can't loop forever.
         retriedFalseCompletionRef.current = true
+        const type = awaitingGenerateRef.current
         setTimeout(() => {
           doSend(
-            'You said the document is ready, but you did not actually call update_plan in that same turn — the panel is still empty. Call update_plan now with the correct type based on what was just discussed, before writing anything else.',
+            `You were in the middle of generating the ${type.replace('_', ' ')} and did not actually call update_plan — the panel is still empty and nothing else happened. Call update_plan now with type="${type}", before writing anything else.`,
             kbScope, thresholdsOverride, true,
           )
         }, 0)
+      } else if (awaitingGenerateRef.current && retriedFalseCompletionRef.current) {
+        // The retry above ALSO ended without update_plan — the one retry is
+        // already spent, so give up here instead of retrying forever. Clear
+        // the tracked state (a stale awaitingGenerateRef would otherwise
+        // wrongly flag a later, unrelated plain-conversation reply as a
+        // dead-end too) and tell the teacher plainly, instead of leaving
+        // them looking at a silently empty panel.
+        const type = awaitingGenerateRef.current
+        awaitingGenerateRef.current = null
+        addMessage({ role: 'assistant', content: `Something went wrong generating the ${type.replace('_', ' ')} — want to try again?` })
       }
 
       // Persist assistant message
@@ -933,6 +958,7 @@ export default function Page() {
     // this, doSend's duplicate-request guard would silently block every
     // future send, in this conversation and every other one, forever.
     clarifyToolCallRef.current = null
+    awaitingGenerateRef.current = null
     // Notes and generated documents belong to the conversation they were
     // created in, same as handleNewChat — notes/artifacts aren't reloaded
     // from this conversation's own history below (not persisted per-
@@ -1004,6 +1030,7 @@ export default function Page() {
     // permanently block every future send via doSend's duplicate-request
     // guard, since there's no card left anywhere to answer it with.
     clarifyToolCallRef.current = null
+    awaitingGenerateRef.current = null
     // Notes and generated documents belong to the conversation they were
     // created in — a new chat starts with an empty right panel, not the
     // previous conversation's leftover notes/Action Plan/Agenda/Report
@@ -1055,6 +1082,7 @@ export default function Page() {
       )
       if (typeMatch) {
         retriedFalseCompletionRef.current = false
+        awaitingGenerateRef.current = typeMatch[0] as ArtifactType
         doSend(text, kbScope ?? getKbScope(), undefined, false, undefined, buildNotesContext(typeMatch[1], notes))
         return
       }
@@ -1197,6 +1225,7 @@ export default function Page() {
   function requestGenerateFromNotes(type: ArtifactType, noteIds: string[]) {
     manualGenerateNoteIdsRef.current = noteIds
     retriedFalseCompletionRef.current = false
+    awaitingGenerateRef.current = type
     const label = GENERATE_LABEL[type]
     const text = noteIds.length === notes.length
       ? `Generate a ${label} from my saved notes.`
