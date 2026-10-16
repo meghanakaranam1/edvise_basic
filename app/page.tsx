@@ -22,6 +22,7 @@ import { signalKey } from './components/Cards/CriteriaSettingCard'
 import { thresholdPrompt } from './components/Cards/CriteriaSettingCard'
 import { supabase } from './lib/supabase'
 import type { SupabaseSession } from './lib/supabase'
+import { detectPeriods, filterIndicatorsByPeriods } from './lib/periodDetection'
 import {
   createConversation,
   getConversationMessages,
@@ -960,6 +961,10 @@ export default function Page() {
     }
   }
 
+  function showCriteriaCard(mapping: Record<string, string>) {
+    addMessage({ role: 'card', type: 'criteria', columnMapping: mapping, columnUniques: columnUniquesRef.current ?? {}, indicators: indicatorsRef.current, onConfirm: handleCriteriaConfirmed })
+  }
+
   function handleColumnsConfirmed(mapping: Record<string, string>, formulaRulesText?: string) {
     setColumnMapping(mapping)
     setPhase('criteria')
@@ -970,7 +975,25 @@ export default function Page() {
         .then(() => refreshSchoolContext(userId))
         .catch(err => console.error('Failed to save formula rules to context:', err))
     }
-    addMessage({ role: 'card', type: 'criteria', columnMapping: mapping, columnUniques: columnUniquesRef.current ?? {}, indicators: indicatorsRef.current, onConfirm: handleCriteriaConfirmed })
+    // If the data has period-suffixed columns (e.g. attq1..attq4), ask which
+    // period(s) should feed the analysis before criteria-setting — without
+    // this, every period silently got OR'd together (a student flagged if
+    // chronically absent in ANY single quarter), with no indication that
+    // was happening or that it was a choice at all.
+    const detection = detectPeriods(indicatorsRef.current)
+    if (detection) {
+      addMessage({
+        role: 'card',
+        type: 'period_picker',
+        detection,
+        onConfirm: (selection) => {
+          indicatorsRef.current = filterIndicatorsByPeriods(indicatorsRef.current, detection, selection)
+          showCriteriaCard(mapping)
+        },
+      })
+      return
+    }
+    showCriteriaCard(mapping)
   }
 
   function handleCriteriaConfirmed(t: Thresholds) {

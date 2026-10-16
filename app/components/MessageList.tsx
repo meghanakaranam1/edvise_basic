@@ -13,6 +13,8 @@ import StudentTableCard, { type StudentTableData } from './Cards/StudentTableCar
 import SELCard, { type SELData } from './Cards/SELCard'
 import ChartCard, { type ChartData } from './Cards/ChartCard'
 import BrainstormQCard, { type BrainstormQData } from './Cards/BrainstormQCard'
+import PeriodPickerCard from './Cards/PeriodPickerCard'
+import type { PeriodDetectionResult } from '../lib/periodDetection'
 
 export type Message =
   | { role: 'user'; content: string; id?: string; senderName?: string }
@@ -21,6 +23,11 @@ export type Message =
   | { role: 'card'; type: 'data_confirm'; data: Parameters<typeof DataConfirmCard>[0]['data']; onConfirm: Parameters<typeof DataConfirmCard>[0]['onConfirm']; id?: string }
   | { role: 'card'; type: 'sheet_picker'; filename: string; sheets: SheetSummary[]; onConfirm: (idxs: number[]) => void; id?: string }
   | { role: 'card'; type: 'criteria'; columnMapping?: Record<string, string>; columnUniques?: Record<string, string[]>; indicators?: import('../api/suggest-columns/route').Indicators; onConfirm: (t: Thresholds) => void; id?: string }
+  // Shown once, right after column-mapping confirmation, only when the
+  // uploaded data has period-suffixed columns (e.g. attq1..attq4) — lets
+  // the teacher choose which time period(s) feed into the analysis instead
+  // of silently combining all of them. See lib/periodDetection.ts.
+  | { role: 'card'; type: 'period_picker'; detection: PeriodDetectionResult; onConfirm: (selection: 'all' | string[]) => void; id?: string }
   | { role: 'card'; type: 'brainstorm_q'; data: BrainstormQData; onSubmit: (text: string) => void; id?: string }
   // A reply sent via an anchored inline comment (see AnchoredComments.tsx)
   // also shows up here as its own distinct entry — not a normal chat turn —
@@ -582,6 +589,9 @@ export default function MessageList({
                   )}
                   {msg.type === 'criteria' && (
                     <CriteriaSettingCard columnMapping={msg.columnMapping} columnUniques={msg.columnUniques} indicators={msg.indicators} onConfirm={msg.onConfirm} />
+                  )}
+                  {msg.type === 'period_picker' && (
+                    <PeriodPickerCard detection={msg.detection} onConfirm={msg.onConfirm} />
                   )}
                   {msg.type === 'brainstorm_q' && (
                     <BrainstormQCard data={msg.data} onSubmit={msg.onSubmit} />
