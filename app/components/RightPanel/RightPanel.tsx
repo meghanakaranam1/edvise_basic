@@ -247,8 +247,8 @@ export default function RightPanel({
                 </button>
                 <button
                   onClick={confirmGenerate}
-                  disabled={selectedIds.size === 0}
-                  style={{ padding: '9px', border: 'none', borderRadius: 8, background: selectedIds.size === 0 ? '#c5cce0' : colors.check, color: 'white', fontSize: 13, fontWeight: 600, cursor: selectedIds.size === 0 ? 'default' : 'pointer', fontFamily: 'inherit' }}
+                  disabled={selectedIds.size === 0 || !!generating}
+                  style={{ padding: '9px', border: 'none', borderRadius: 8, background: (selectedIds.size === 0 || !!generating) ? '#c5cce0' : colors.check, color: 'white', fontSize: 13, fontWeight: 600, cursor: (selectedIds.size === 0 || !!generating) ? 'default' : 'pointer', fontFamily: 'inherit' }}
                 >
                   {picking === 'report' ? 'Generate Report' : 'Generate'}
                 </button>

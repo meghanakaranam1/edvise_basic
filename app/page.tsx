@@ -689,6 +689,13 @@ export default function Page() {
         // can't loop forever.
         retriedFalseCompletionRef.current = true
         const type = awaitingGenerateRef.current
+        // The turn that just finished may have written a false "ready in
+        // the panel" confirmation with no update_plan call behind it —
+        // left in place, that bubble shows up alongside the REAL
+        // confirmation once the retry below actually finishes the job,
+        // reading as two separate "done" messages for one action. Replace
+        // it with an honest in-progress note instead of letting it linger.
+        replaceLastAssistant(() => 'One moment — finishing this up…')
         setTimeout(() => {
           doSend(
             `You were in the middle of generating the ${type.replace('_', ' ')} and did not actually call update_plan — the panel is still empty and nothing else happened. Call update_plan now with type="${type}", before writing anything else.`,

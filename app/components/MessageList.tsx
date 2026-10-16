@@ -245,6 +245,37 @@ function SourceTabs({ kb, web, kbSources, webSources }: {
 
 // Sources section with tabs when both KB and web are present.
 // Numbers are global (KB [1]–[N], then web [N+1]–[M]) so inline [N] citations in text align.
+// Shows the first VISIBLE_CAP chips inline and collapses the rest behind a
+// "+N more" toggle — now that KB search can return more than a handful of
+// genuinely relevant docs (the old hard topK cap of 4/6 is gone), dumping
+// all of them as wrapped chips would bury the message text under a wall of
+// source pills. This keeps every source reachable without that.
+const VISIBLE_SOURCE_CAP = 6
+function ChipList({ items, renderChip }: {
+  items: Array<{ s: { title: string; kind: 'kb' | 'web' | 'pdf'; url?: string; kbDocId?: string; fileId?: string; filename?: string }; num: number }>
+  renderChip: (item: { s: { title: string; kind: 'kb' | 'web' | 'pdf'; url?: string; kbDocId?: string; fileId?: string; filename?: string }; num: number }) => React.ReactNode
+}) {
+  const [expanded, setExpanded] = useState(false)
+  const visible = expanded ? items : items.slice(0, VISIBLE_SOURCE_CAP)
+  const hidden = items.length - visible.length
+  return (
+    <>
+      {visible.map(item => renderChip(item))}
+      {hidden > 0 && (
+        <button
+          onClick={() => setExpanded(true)}
+          style={{
+            display: 'inline-flex', alignItems: 'center', fontSize: 11, padding: '3px 9px', borderRadius: 12,
+            fontWeight: 600, border: '1px dashed #c5cce0', background: 'transparent', color: '#7a89b8', cursor: 'pointer', fontFamily: 'inherit',
+          }}
+        >
+          +{hidden} more
+        </button>
+      )}
+    </>
+  )
+}
+
 function SourcesSection({ sources, text }: {
   sources: Array<{ title: string; kind: 'kb' | 'web' | 'pdf'; url?: string; kbDocId?: string; fileId?: string; filename?: string }>
   text: string
@@ -355,7 +386,7 @@ function SourcesSection({ sources, text }: {
           {tabBtn('web', 'Web', webItems.length)}
         </div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-          {activeItems.map(({ s, num }) => <Chip key={num} s={s} num={num} />)}
+          <ChipList key={activeTab} items={activeItems} renderChip={({ s, num }) => <Chip key={num} s={s} num={num} />} />
         </div>
       </div>
     )
@@ -364,7 +395,7 @@ function SourcesSection({ sources, text }: {
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: 10, alignItems: 'center' }}>
       <span style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Sources</span>
-      {indexed.map(({ s, num }) => <Chip key={num} s={s} num={num} />)}
+      <ChipList items={indexed} renderChip={({ s, num }) => <Chip key={num} s={s} num={num} />} />
     </div>
   )
 }

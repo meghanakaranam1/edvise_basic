@@ -40,7 +40,18 @@ function scoreDoc(doc: KbDoc, queryStems: Set<string>): number {
 // visible to every other school (confirmed: school_name was never even
 // recorded at upload, so nothing filtered on it). "global" docs are never
 // restricted — they're meant to be shared across every school by design.
-export async function searchKB(query: string, scopes: string[], topK = 4, userSchool?: string): Promise<KbDoc[]> {
+//
+// topK used to hard-cap results at 4 (or 6 from the search_strategies tool)
+// BEFORE relevance was even considered for the cut — a real match past
+// that rank was silently dropped and could never become a citation, same
+// bug as the one already fixed on web search. Relevance filtering
+// (score >= 2 below) already does the real work of excluding weak matches;
+// this is now just a generous safety ceiling against a pathological case
+// (e.g. a school with 100+ approved docs all loosely matching one query)
+// rather than a routine truncation — in normal use it should never
+// actually bind.
+const MAX_KB_RESULTS = 20
+export async function searchKB(query: string, scopes: string[], userSchool?: string): Promise<KbDoc[]> {
   if (!scopes.length) return []
 
   const normalizedScopes = scopes.map(s => (s === 'student_success' ? 'global' : s))
@@ -75,5 +86,5 @@ export async function searchKB(query: string, scopes: string[], topK = 4, userSc
 
   console.log('🔍 KB search for:', query, '→', scored.length, 'matching docs, top score:', scored[0]?.score ?? 0)
 
-  return scored.slice(0, topK).map(x => x.doc)
+  return scored.slice(0, MAX_KB_RESULTS).map(x => x.doc)
 }
