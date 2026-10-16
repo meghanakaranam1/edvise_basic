@@ -20,6 +20,7 @@ import { sheetsToCsv, summarizeSheet, chooseSetupSheet, type SheetTable } from '
 import type { Thresholds } from './components/Cards/CriteriaSettingCard'
 import { signalKey } from './components/Cards/CriteriaSettingCard'
 import { thresholdPrompt } from './components/Cards/CriteriaSettingCard'
+import { initThresholds } from './components/Cards/CriteriaSettingCard'
 import { supabase } from './lib/supabase'
 import type { SupabaseSession } from './lib/supabase'
 import { detectPeriods, filterIndicatorsByPeriods } from './lib/periodDetection'
@@ -85,7 +86,19 @@ export default function Page() {
   // regardless of which render's closure is reading it (same reason
   // indicatorsRef exists below).
   const columnUniquesRef = useRef<Record<string, string[]> | undefined>(undefined)
+  // The FULL, unfiltered set of signals classifyColumns reported — never
+  // mutated by the time-period selection below. activeIndicatorsRef is the
+  // one actually used for criteria-setting/thresholds/analysis: the same
+  // list, filtered down to whichever period(s) the teacher has chosen (or
+  // identical to indicatorsRef when the dataset has no period-tagged
+  // columns at all, i.e. periodDetectionRef.current is null). Keeping both
+  // means changing the period selection later (see the "Time period"
+  // control in MessageInput) can always re-filter from the true original
+  // set instead of having already discarded the other periods' signals.
   const indicatorsRef = useRef<import('./api/suggest-columns/route').Indicators>([])
+  const activeIndicatorsRef = useRef<import('./api/suggest-columns/route').Indicators>([])
+  const periodDetectionRef = useRef<import('./lib/periodDetection').PeriodDetectionResult | null>(null)
+  const [periodSelection, setPeriodSelectionState] = useState<'all' | string[]>('all')
   const fileIdRef = useRef<string | undefined>(undefined)
   // Extra files alongside fileIdRef, for multi-sheet uploads kept as separate
   // (unmerged) files — fileIdRef still points at the primary sheet for the
@@ -485,7 +498,7 @@ export default function Page() {
           ? { fileIds: fileIdsRef.current }
           : { fileId: fileIdRef.current }),
         pdfFiles: pdfFiles.length ? pdfFiles : undefined,
-        thresholdPrompt: activeThresholds ? thresholdPrompt(activeThresholds, indicatorsRef.current) : undefined,
+        thresholdPrompt: activeThresholds ? thresholdPrompt(activeThresholds, activeIndicatorsRef.current) : undefined,
         columnMapping: columnMapping ?? undefined,
         schoolContext: schoolContextRef.current || undefined,
         kbScope,
@@ -677,6 +690,9 @@ export default function Page() {
     setColumnUniques(undefined)
     columnUniquesRef.current = undefined
     indicatorsRef.current = []
+    activeIndicatorsRef.current = []
+    periodDetectionRef.current = null
+    setPeriodSelectionState('all')
     setFileLabel(loadingLabel)
     addMessage({ role: 'assistant', isLoading: true })
   }
@@ -743,6 +759,10 @@ export default function Page() {
       ...detectedIndicators.map(s => ({ ...s, sourceFile: s.sourceFile ?? setupSourceFile })),
       ...(extra?.indicators ?? []),
     ]
+    // Default: nothing filtered yet (periods, if any, get resolved via the
+    // period_picker card in handleColumnsConfirmed, right before criteria
+    // setting uses this).
+    activeIndicatorsRef.current = indicatorsRef.current
     const allColumns = [...meta.columns, ...(extra?.columns ?? []).filter(c => !meta.columns.includes(c))]
     const allLabels = { ...extra?.labels, ...suggestedLabels }
     setMessages(prev => prev.filter(m => !('isLoading' in m)))
@@ -962,7 +982,7 @@ export default function Page() {
   }
 
   function showCriteriaCard(mapping: Record<string, string>) {
-    addMessage({ role: 'card', type: 'criteria', columnMapping: mapping, columnUniques: columnUniquesRef.current ?? {}, indicators: indicatorsRef.current, onConfirm: handleCriteriaConfirmed })
+    addMessage({ role: 'card', type: 'criteria', columnMapping: mapping, columnUniques: columnUniquesRef.current ?? {}, indicators: activeIndicatorsRef.current, onConfirm: handleCriteriaConfirmed })
   }
 
   function handleColumnsConfirmed(mapping: Record<string, string>, formulaRulesText?: string) {
@@ -975,19 +995,24 @@ export default function Page() {
         .then(() => refreshSchoolContext(userId))
         .catch(err => console.error('Failed to save formula rules to context:', err))
     }
-    // If the data has period-suffixed columns (e.g. attq1..attq4), ask which
-    // period(s) should feed the analysis before criteria-setting — without
-    // this, every period silently got OR'd together (a student flagged if
-    // chronically absent in ANY single quarter), with no indication that
-    // was happening or that it was a choice at all.
-    const detection = detectPeriods(indicatorsRef.current)
-    if (detection) {
+    // If classifyColumns itself identified period-variant columns (e.g.
+    // attq1..attq4 all tagged as the same periodGroupKey — see
+    // columnClassifier.ts), ask which period(s) should feed the analysis
+    // before criteria-setting — without this, every period silently got
+    // OR'd together (a student flagged if chronically absent in ANY single
+    // quarter), with no indication that was happening or that it was a
+    // choice at all. periodDetectionRef is cached here so the "Time
+    // period" control in MessageInput (for changing this choice later)
+    // doesn't need to recompute it.
+    periodDetectionRef.current = detectPeriods(indicatorsRef.current)
+    if (periodDetectionRef.current) {
       addMessage({
         role: 'card',
         type: 'period_picker',
-        detection,
+        detection: periodDetectionRef.current,
         onConfirm: (selection) => {
-          indicatorsRef.current = filterIndicatorsByPeriods(indicatorsRef.current, detection, selection)
+          setPeriodSelectionState(selection)
+          activeIndicatorsRef.current = filterIndicatorsByPeriods(indicatorsRef.current, selection)
           showCriteriaCard(mapping)
         },
       })
@@ -1005,6 +1030,25 @@ export default function Page() {
   function handleChangeCriteria(t: Thresholds) {
     setThresholds(t)
     doSend('Re-run the school-wide risk overview with the updated criteria.', '', t)
+  }
+
+  // Changing the time-period selection AFTER the initial period_picker
+  // card — e.g. a teacher who started with "all periods combined" deciding
+  // mid-conversation they actually want just the most recent quarter. Every
+  // analysis stage (grade breakdown, subgroup, SEL — not just the risk
+  // overview) reads from the same activeIndicatorsRef via thresholdPrompt,
+  // so re-deriving it here is enough to make all of them follow the new
+  // choice, same as the initial pick does.
+  function handleChangePeriods(selection: 'all' | string[]) {
+    setPeriodSelectionState(selection)
+    activeIndicatorsRef.current = filterIndicatorsByPeriods(indicatorsRef.current, selection)
+    // Regenerate thresholds for whichever signals are now active — but keep
+    // any value the teacher already customized for a signal that's still
+    // present, rather than silently resetting it back to the default.
+    const existingByKey = new Map(thresholds?.map(t => [signalKey(t), t]) ?? [])
+    const newThresholds = initThresholds(activeIndicatorsRef.current).map(t => existingByKey.get(signalKey(t)) ?? t)
+    setThresholds(newThresholds)
+    doSend('Re-run the school-wide risk overview with the updated time period.', '', newThresholds)
   }
 
   async function handleSelectConversation(id: string) {
@@ -1514,7 +1558,10 @@ export default function Page() {
               onRemoveFile={fileLabel ? handleRemoveFile : undefined}
               thresholds={thresholds}
               onChangeCriteria={handleChangeCriteria}
-              indicators={indicatorsRef.current}
+              indicators={activeIndicatorsRef.current}
+              periodDetection={periodDetectionRef.current}
+              periodSelection={periodSelection}
+              onChangePeriods={handleChangePeriods}
               columnUniques={columnUniques}
               columnMapping={columnMapping}
               csvPreview={csvPreview}

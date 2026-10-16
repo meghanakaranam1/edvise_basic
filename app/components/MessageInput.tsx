@@ -3,6 +3,7 @@ import { useRef, useState, useEffect } from 'react'
 import type { Thresholds } from './Cards/CriteriaSettingCard'
 import { describeThresholds, CriteriaFields } from './Cards/CriteriaSettingCard'
 import type { Indicators } from '../lib/columnClassifier'
+import type { PeriodDetectionResult } from '../lib/periodDetection'
 
 export type SourceKey = 'student_success' | 'school' | 'general' | 'web'
 
@@ -15,6 +16,15 @@ interface Props {
   thresholds?: Thresholds
   onChangeCriteria?: (t: Thresholds) => void
   indicators?: Indicators
+  // Only set when the uploaded data had period-tagged columns (e.g.
+  // attq1..attq4) — see lib/periodDetection.ts. When present, a "Time
+  // period" chip appears next to the risk-criteria one, letting the
+  // teacher change their earlier period_picker choice at any point —
+  // every analysis stage re-derives from whichever signals are active, so
+  // changing it here applies everywhere, not just the next message.
+  periodDetection?: PeriodDetectionResult | null
+  periodSelection?: 'all' | string[]
+  onChangePeriods?: (selection: 'all' | string[]) => void
   columnUniques?: Record<string, string[]>
   columnMapping?: Record<string, string>
   csvPreview?: { columns: string[]; rows: Record<string, string>[] }
@@ -75,7 +85,7 @@ function parseEdviseMention(text: string): { mentionsEdvise: boolean; cleaned: s
 
 export default function MessageInput({
   onSend, onFileSelect, disabled, fileLabel, onRemoveFile,
-  thresholds, onChangeCriteria, indicators, columnUniques, columnMapping, csvPreview,
+  thresholds, onChangeCriteria, indicators, periodDetection, periodSelection, onChangePeriods, columnUniques, columnMapping, csvPreview,
   activeKB, onToggleSource,
   pdfFiles, pdfUploading, onPdfSelect, onRemovePdf,
   focusTrigger,
@@ -84,13 +94,16 @@ export default function MessageInput({
 }: Props) {
   const [text, setText] = useState('')
   const [showCriteria, setShowCriteria] = useState(false)
+  const [showPeriods, setShowPeriods] = useState(false)
   const [showCsvPreview, setShowCsvPreview] = useState(false)
   const [editT, setEditT] = useState<Thresholds>([])
+  const [editPeriods, setEditPeriods] = useState<'all' | string[]>('all')
   const addressedToEdvise = EDVISE_MENTION.test(text)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const pdfInputRef = useRef<HTMLInputElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
+  const periodPanelRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (focusTrigger) textareaRef.current?.focus()
@@ -100,6 +113,11 @@ export default function MessageInput({
   function openCriteria() {
     setEditT(thresholds ? [...thresholds] : [])
     setShowCriteria(true)
+  }
+
+  function openPeriods() {
+    setEditPeriods(periodSelection ?? 'all')
+    setShowPeriods(true)
   }
 
   // Close popover on outside click
@@ -113,6 +131,17 @@ export default function MessageInput({
     document.addEventListener('mousedown', handle)
     return () => document.removeEventListener('mousedown', handle)
   }, [showCriteria])
+
+  useEffect(() => {
+    if (!showPeriods) return
+    function handle(e: MouseEvent) {
+      if (periodPanelRef.current && !periodPanelRef.current.contains(e.target as Node)) {
+        setShowPeriods(false)
+      }
+    }
+    document.addEventListener('mousedown', handle)
+    return () => document.removeEventListener('mousedown', handle)
+  }, [showPeriods])
 
   function getKbScope(): string {
     const order: SourceKey[] = ['student_success', 'school', 'general', 'web']
@@ -163,6 +192,24 @@ export default function MessageInput({
     setShowCriteria(false)
   }
 
+  function applyPeriods() {
+    if (onChangePeriods) onChangePeriods(editPeriods)
+    setShowPeriods(false)
+  }
+
+  function togglePeriod(p: string) {
+    setEditPeriods(prev => {
+      const cur = prev === 'all' ? [] : prev
+      const next = cur.includes(p) ? cur.filter(x => x !== p) : [...cur, p]
+      return next
+    })
+  }
+
+  function periodSummary(selection: 'all' | string[]): string {
+    if (selection === 'all') return 'All periods'
+    return selection.length ? selection.join(', ') : 'No periods selected'
+  }
+
   return (
     <div className="input-wrap" style={{ position: 'relative' }}>
 
@@ -188,6 +235,97 @@ export default function MessageInput({
               Cancel
             </button>
             <button type="button" onClick={applyChanges} style={{ fontSize: 12, fontWeight: 600, color: '#fff', background: '#3E94A5', border: 'none', borderRadius: 8, cursor: 'pointer', padding: '6px 14px' }}>
+              Apply
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Time period popover */}
+      {showPeriods && periodDetection && (
+        <div
+          ref={periodPanelRef}
+          style={{
+            position: 'absolute', bottom: 'calc(100% + 8px)', left: 0,
+            background: '#fff', border: '1px solid #d4dff7', borderRadius: 12,
+            boxShadow: '0 4px 20px rgba(42,59,124,0.12)', padding: '14px 16px',
+            zIndex: 200, minWidth: 300, maxWidth: 420,
+          }}
+        >
+          <div style={{ fontSize: 12, fontWeight: 600, color: '#2A3B7C', marginBottom: 10 }}>
+            Time period
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
+            <label
+              onClick={() => setEditPeriods('all')}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', borderRadius: 8, cursor: 'pointer',
+                border: `1px solid ${editPeriods === 'all' ? '#3E94A5' : '#e5e7eb'}`,
+                background: editPeriods === 'all' ? '#eef7f9' : '#f9fafb',
+              }}
+            >
+              <span style={{
+                width: 14, height: 14, borderRadius: '50%', flexShrink: 0,
+                border: `2px solid ${editPeriods === 'all' ? '#3E94A5' : '#d1d5db'}`,
+                background: editPeriods === 'all' ? '#3E94A5' : 'transparent',
+              }} />
+              <span style={{ fontSize: 12.5, color: editPeriods === 'all' ? '#1b6070' : '#374151' }}>All periods combined</span>
+            </label>
+            <label
+              onClick={() => setEditPeriods(prev => prev === 'all' ? [] : prev)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', borderRadius: 8, cursor: 'pointer',
+                border: `1px solid ${editPeriods !== 'all' ? '#3E94A5' : '#e5e7eb'}`,
+                background: editPeriods !== 'all' ? '#eef7f9' : '#f9fafb',
+              }}
+            >
+              <span style={{
+                width: 14, height: 14, borderRadius: '50%', flexShrink: 0,
+                border: `2px solid ${editPeriods !== 'all' ? '#3E94A5' : '#d1d5db'}`,
+                background: editPeriods !== 'all' ? '#3E94A5' : 'transparent',
+              }} />
+              <span style={{ fontSize: 12.5, color: editPeriods !== 'all' ? '#1b6070' : '#374151' }}>Choose specific periods</span>
+            </label>
+          </div>
+
+          {editPeriods !== 'all' && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, paddingLeft: 22, marginBottom: 10 }}>
+              {periodDetection.allPeriods.map(p => {
+                const checked = editPeriods.includes(p)
+                return (
+                  <button
+                    key={p}
+                    type="button"
+                    onClick={() => togglePeriod(p)}
+                    style={{
+                      padding: '4px 10px', borderRadius: 20, fontSize: 11.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+                      border: `1.5px solid ${checked ? '#3E94A5' : '#e4e9f2'}`,
+                      background: checked ? '#eef8fb' : '#f7f9fc',
+                      color: checked ? '#1b6070' : '#7a89b8',
+                    }}
+                  >
+                    {p}
+                  </button>
+                )
+              })}
+            </div>
+          )}
+
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8 }}>
+            <button type="button" onClick={() => setShowPeriods(false)} style={{ fontSize: 12, color: '#7a89b8', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 8px' }}>
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={applyPeriods}
+              disabled={editPeriods !== 'all' && editPeriods.length === 0}
+              style={{
+                fontSize: 12, fontWeight: 600, color: '#fff', border: 'none', borderRadius: 8, padding: '6px 14px',
+                cursor: (editPeriods !== 'all' && editPeriods.length === 0) ? 'not-allowed' : 'pointer',
+                background: (editPeriods !== 'all' && editPeriods.length === 0) ? '#c5cce0' : '#3E94A5',
+              }}
+            >
               Apply
             </button>
           </div>
@@ -289,6 +427,25 @@ export default function MessageInput({
               }}
             >
               {describeThresholds(thresholds)}
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="10" height="10">
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+              </svg>
+            </button>
+          )}
+
+          {fileLabel && periodDetection && onChangePeriods && (
+            <button
+              type="button"
+              onClick={openPeriods}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 5,
+                fontSize: 11, color: '#7c3aed', background: '#faf5ff',
+                border: '1px solid #d8b4fe', borderRadius: 20,
+                padding: '3px 9px', cursor: 'pointer', fontFamily: 'inherit',
+              }}
+            >
+              Time period: {periodSummary(periodSelection ?? 'all')}
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="10" height="10">
                 <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
                 <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>

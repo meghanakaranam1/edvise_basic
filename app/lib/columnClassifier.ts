@@ -20,6 +20,20 @@ export type Signal = {
   category: IndicatorCategory
   column: string
   sourceFile?: string
+  // Set ONLY when this column is one of several period-variants of the same
+  // underlying metric in the SAME sheet (e.g. a dataset with a separate
+  // attendance-rate column per quarter, or per term/semester) — see the
+  // classification prompt below. period is a short display label for THIS
+  // column's period ("Q1", "Term 2", "Fall"); periodGroupKey is a stable
+  // identifier shared by every period-variant of the same metric (e.g. all
+  // four quarterly attendance-rate columns get the same periodGroupKey, so
+  // they can be grouped without us trying to re-derive that relationship
+  // from column name patterns after the fact — Claude already has the full
+  // semantic picture of the column names and what district-specific naming
+  // scheme they're using, which a fixed regex over raw column names can't
+  // reliably generalize to.
+  period?: string
+  periodGroupKey?: string
 } & (
   | { type: 'rate' | 'days' } // attendance
   | { type: 'count' } // behavior or courseFailure: already a per-student number
@@ -140,9 +154,13 @@ export async function classifyColumns(
   - "grade-numeric" — a 0–100 numeric grade/GPA (courseFailure only).
   - "grade-letter" — actual letter grades A/B/C/D/F only (courseFailure only) — not any other kind of category.
   - "category" — a named outcome/resolution/tier column, typically one row per event or a named performance scale (behavior or courseFailure). Prefer this over "count" whenever the raw column is a category/text value, not an actual number. Also include "values": the exact raw value(s) from the sample, copied character-for-character, that represent a genuine hit — for behavior, actual suspensions/major incidents only (never a minor thing like a hallway pass, positive note, or parent conference); for courseFailure, the failing/lowest performance tier(s) only. Never invent a value that doesn't appear in the sample.
+- "period" and "periodGroupKey" — ONLY set these when this column is one of SEVERAL columns in this sheet that report the SAME underlying metric for different reporting periods within the same school year (e.g. a quarterly attendance rate reported as 4 separate columns, one per quarter; or a per-term suspension count). Recognize this from the column names and your understanding of the district's naming scheme — there's no fixed convention (could be "attq1".."attq4", "attendance_rate_q1".."_q4", "fall_attendance"/"spring_attendance", "T1_absences".."T3_absences", a year suffix, etc.), so use your judgment the same way you do for identityColumns and labels, not a fixed pattern.
+  - "period": a short, human-readable label for THIS column's specific period — e.g. "Q1", "Term 2", "Fall", "Semester 1". Keep it short, title-cased, teacher-facing.
+  - "periodGroupKey": a short stable string shared by EVERY period-variant column of this same metric in this sheet, so they can be grouped together — e.g. all four quarterly attendance-rate columns get the identical periodGroupKey "attendance_rate". Use the same key across all of them; make it up from the underlying metric's meaning (lowercase, underscores), not from any one column's literal name.
+  - Omit both fields entirely for a column that is NOT one of several period-variants — most columns won't have these set. Only set them when there are genuinely 2+ columns in this sheet for the same metric across different periods.
 
 IMPORTANT — don't report the same underlying fact twice as separate signals:
-- If several columns describe attendance for the exact SAME reporting date/period (e.g. an attendance-rate column alongside a breakdown into excused/unexcused/total days for that same date), report only ONE of them — prefer a "rate" column over a raw day-count breakdown, and if only day-counts exist, prefer a "total" days-absent column over an excused/unexcused split (those are components of the total, not independent facts). DO report separate signals for genuinely different reporting periods — different quarters/terms, or last year vs. this year — since those really are independent facts a teacher may want to check separately.
+- If several columns describe attendance for the exact SAME reporting date/period (e.g. an attendance-rate column alongside a breakdown into excused/unexcused/total days for that same date), report only ONE of them — prefer a "rate" column over a raw day-count breakdown, and if only day-counts exist, prefer a "total" days-absent column over an excused/unexcused split (those are components of the total, not independent facts). DO report separate signals for genuinely different reporting periods — different quarters/terms, or last year vs. this year — since those really are independent facts a teacher may want to check separately (and should be tagged with "period"/"periodGroupKey" as described above, so the teacher can be asked which period(s) to actually use rather than silently combining all of them).
 - If an incident-log sheet has more than one categorical column describing the same incident (e.g. both a "type of incident" column and a separate "resolution/outcome" column for the same row), report only the one most directly indicative of severity — usually the resolution/consequence column, since the type of incident alone doesn't reliably say whether it was serious enough to count. Don't report both.
 If nothing in these columns matches any category, return an empty array.
 

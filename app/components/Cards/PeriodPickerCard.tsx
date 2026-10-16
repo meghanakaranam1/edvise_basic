@@ -8,24 +8,15 @@ const CATEGORY_LABEL: Record<string, string> = {
   courseFailure: 'Course failure',
 }
 
-function periodLabel(p: string): string {
-  const m = p.match(/^(q|term|sem)(\d+)$/)
-  if (!m) return p
-  if (m[1] === 'q') return `Quarter ${m[2]}`
-  if (m[1] === 'term') return `Term ${m[2]}`
-  return `Semester ${m[2]}`
-}
-
 export default function PeriodPickerCard({
   detection, onConfirm,
 }: {
   detection: PeriodDetectionResult
   onConfirm: (selection: 'all' | string[]) => void
 }) {
-  const [choice, setChoice] = useState<'all' | 'latest' | 'custom'>('all')
+  const [choice, setChoice] = useState<'all' | 'custom'>('all')
   const [customPeriods, setCustomPeriods] = useState<Set<string>>(new Set(detection.allPeriods))
   const [submitted, setSubmitted] = useState<string | null>(null)
-  const latest = detection.allPeriods[detection.allPeriods.length - 1]
 
   function toggle(p: string) {
     setCustomPeriods(prev => {
@@ -36,12 +27,10 @@ export default function PeriodPickerCard({
   }
 
   function handleConfirm() {
-    const selection: 'all' | string[] = choice === 'all' ? 'all' : choice === 'latest' ? [latest] : [...customPeriods]
+    const selection: 'all' | string[] = choice === 'all' ? 'all' : [...customPeriods]
     const summary = choice === 'all'
       ? 'All periods combined (flagged if tripped in any period)'
-      : choice === 'latest'
-        ? `Most recent period only (${periodLabel(latest)})`
-        : `Selected periods: ${[...customPeriods].sort().map(periodLabel).join(', ') || 'none'}`
+      : `${[...customPeriods].length === 1 ? '' : 'Periods: '}${[...customPeriods].join(', ') || 'none'}`
     setSubmitted(summary)
     onConfirm(selection)
   }
@@ -59,7 +48,7 @@ export default function PeriodPickerCard({
     )
   }
 
-  const radioRow = (value: 'all' | 'latest' | 'custom', label: string, sub?: string) => (
+  const radioRow = (value: 'all' | 'custom', label: string, sub?: string) => (
     <label
       onClick={() => setChoice(value)}
       style={{
@@ -91,14 +80,13 @@ export default function PeriodPickerCard({
           This data has multiple time periods
         </p>
         <p style={{ fontSize: 12, color: '#6b7280', margin: 0 }}>
-          {detection.groups.map(g => `${CATEGORY_LABEL[g.category] ?? g.category} (${Object.keys(g.periods).sort().map(periodLabel).join(', ')})`).join(' · ')}
+          {detection.groups.map(g => `${CATEGORY_LABEL[g.category] ?? g.category} (${Object.keys(g.periods).join(', ')})`).join(' · ')}
         </p>
       </div>
 
       <div style={{ padding: '0 12px 8px', display: 'flex', flexDirection: 'column', gap: 6 }}>
         {radioRow('all', 'All periods combined', 'Flag a student if they tripped the threshold in any period — the broadest view across the full year.')}
-        {radioRow('latest', `Most recent period only (${periodLabel(latest)})`, 'Who is still at-risk right now, rather than who was ever flagged.')}
-        {radioRow('custom', 'Choose specific periods', 'Pick exactly which periods to include.')}
+        {radioRow('custom', 'Choose specific periods', 'Pick exactly which period(s) to include — e.g. just the most recent one, to see who’s still at-risk right now.')}
 
         {choice === 'custom' && (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, padding: '8px 4px 2px 34px' }}>
@@ -116,7 +104,7 @@ export default function PeriodPickerCard({
                     color: checked ? '#1b6070' : '#7a89b8',
                   }}
                 >
-                  {periodLabel(p)}
+                  {p}
                 </button>
               )
             })}
