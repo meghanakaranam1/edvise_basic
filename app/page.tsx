@@ -22,7 +22,7 @@ import type { Thresholds } from './components/Cards/CriteriaSettingCard'
 import { signalKey } from './components/Cards/CriteriaSettingCard'
 import { thresholdPrompt } from './components/Cards/CriteriaSettingCard'
 import { initThresholds } from './components/Cards/CriteriaSettingCard'
-import { supabase } from './lib/supabase'
+import { supabase, pendingPasswordRecovery } from './lib/supabase'
 import type { SupabaseSession } from './lib/supabase'
 import { detectPeriods, filterIndicatorsByPeriods } from './lib/periodDetection'
 import {
@@ -65,7 +65,12 @@ export default function Page() {
   // True while the session is a temporary one Supabase attaches after the
   // teacher clicks a "forgot password" email link — shows the "set new
   // password" screen instead of the normal app until they actually set one.
-  const [passwordRecovery, setPasswordRecovery] = useState(false)
+  // Seeded from pendingPasswordRecovery (lib/supabase.ts) rather than
+  // starting false and waiting to catch a live PASSWORD_RECOVERY event here
+  // — that event fires on client construction, before this component's own
+  // effects can run, so by the time this component ever sees it, it's
+  // already too late.
+  const [passwordRecovery, setPasswordRecovery] = useState(pendingPasswordRecovery)
 
   // Chat
   const [messages, setMessages] = useState<Message[]>([])
@@ -248,6 +253,12 @@ export default function Page() {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session)
       setAuthLoading(false)
+      // Belt-and-suspenders alongside the useState(pendingPasswordRecovery)
+      // seed above: getSession() itself waits on supabase-js's internal
+      // init, so by the time this resolves, the flag has definitely been
+      // set if the recovery event ever fired — catches it even if the
+      // initial render ran before that happened.
+      if (pendingPasswordRecovery) setPasswordRecovery(true)
     })
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       setSession(session)
