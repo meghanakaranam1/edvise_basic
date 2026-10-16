@@ -1415,21 +1415,26 @@ export default function Page() {
     retriedFalseCompletionRef.current = false
     awaitingGenerateRef.current = type
     const label = GENERATE_LABEL[type]
-    const base = noteIds.length === notes.length
+    const text = noteIds.length === notes.length
       ? `Generate a ${label} from my saved notes.`
       : `Generate a ${label} from these ${noteIds.length} selected notes.`
+    const selectedNotes = notes.filter(n => noteIds.includes(n.id))
+    const notesContext = buildNotesContext(label, selectedNotes)
     // A system-prompt clause alone wasn't reliable enough at stopping a
     // repeat request from being treated as already-covered by the first
     // generation's answered questions — the app itself already knows
     // whether this is a repeat (artifactHistory[type] already has an
-    // earlier version), so say so directly in the message text, which is a
+    // earlier version), so say so directly in Claude's context, which is a
     // much stronger per-turn signal than an instruction buried deep in a
-    // long system prompt.
-    const text = artifactHistory[type].length > 0
-      ? `${base} This is a NEW, separate ${label} request, not a continuation of the previous one — ask the focus and format questions again from scratch, even though they look the same as last time. Do not reuse your previous answers for this new request.`
-      : base
-    const selectedNotes = notes.filter(n => noteIds.includes(n.id))
-    doSend(text, getKbScope(), undefined, false, undefined, buildNotesContext(label, selectedNotes))
+    // long system prompt. This goes into notesContext, NOT the visible
+    // `text` above — notesContext is appended for Claude only and never
+    // shown in the teacher's own chat bubble (see doSend), unlike a first
+    // attempt at this fix that mistakenly put it in `text` and made the
+    // instruction itself show up as if the teacher had typed it.
+    const repeatNote = artifactHistory[type].length > 0
+      ? `\n\n(For your context only, not shown to the teacher — this is a NEW, separate ${label} request, not a continuation of the previous one. Ask the focus and format questions again from scratch, even though they look the same as last time. Do not reuse your previous answers for this new request.)`
+      : ''
+    doSend(text, getKbScope(), undefined, false, undefined, notesContext ? `${notesContext}${repeatNote}` : (repeatNote || undefined))
   }
 
   async function handleGenerate(type: ArtifactType, noteIds?: string[]) {
