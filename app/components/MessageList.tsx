@@ -245,6 +245,36 @@ function SourceTabs({ kb, web, kbSources, webSources }: {
 
 // Sources section with tabs when both KB and web are present.
 // Numbers are global (KB [1]–[N], then web [N+1]–[M]) so inline [N] citations in text align.
+// Claude cites sources by their position in the full `sources` array it was
+// given (e.g. "[6]"), but SourcesSection only ever displayed the subset it
+// actually cited — retrieval doesn't imply usage, so an uncited source is
+// dropped rather than shown. Left as-is, the surviving badges kept their
+// ORIGINAL array positions, so a teacher could see chips numbered "2, 6, 8,
+// 9, 11..." with no 1/3/4/5/7 in sight, reading as broken even though each
+// number genuinely matched its "[N]" in the body text. This renumbers both
+// the inline "[N]" markers AND the surviving source list together, in one
+// pass, to a clean 1, 2, 3... sequence — so the body text and the source
+// chips always agree, and the visible numbering has no gaps.
+function remapCitations<T>(text: string, sources: T[]): { text: string; sources: Array<{ s: T; num: number }> } {
+  const used = new Set<number>()
+  const findRegex = /\[(\d+)\]/g
+  let m: RegExpExecArray | null
+  while ((m = findRegex.exec(text))) {
+    const n = parseInt(m[1], 10)
+    if (n >= 1 && n <= sources.length) used.add(n)
+  }
+  const orderedOld = [...used].sort((a, b) => a - b)
+  const remap = new Map<number, number>()
+  orderedOld.forEach((old, idx) => remap.set(old, idx + 1))
+
+  const newText = text.replace(/\[(\d+)\]/g, (full, numStr) => {
+    const mapped = remap.get(parseInt(numStr, 10))
+    return mapped ? `[${mapped}]` : full
+  })
+
+  return { text: newText, sources: orderedOld.map(old => ({ s: sources[old - 1], num: remap.get(old)! })) }
+}
+
 // Shows the first VISIBLE_CAP chips inline and collapses the rest behind a
 // "+N more" toggle — now that KB search can return more than a handful of
 // genuinely relevant docs (the old hard topK cap of 4/6 is gone), dumping
@@ -276,20 +306,16 @@ function ChipList({ items, renderChip }: {
   )
 }
 
-function SourcesSection({ sources, text }: {
-  sources: Array<{ title: string; kind: 'kb' | 'web' | 'pdf'; url?: string; kbDocId?: string; fileId?: string; filename?: string }>
-  text: string
+function SourcesSection({ indexed }: {
+  // Already filtered to cited-only and renumbered sequentially by
+  // remapCitations — this component just lays them out, it doesn't decide
+  // which sources are shown or what number they wear.
+  indexed: Array<{ s: { title: string; kind: 'kb' | 'web' | 'pdf'; url?: string; kbDocId?: string; fileId?: string; filename?: string }; num: number }>
 }) {
   const [activeTab, setActiveTab] = useState<'kb' | 'web'>('kb')
 
-  // Retrieval doesn't imply usage — the model is told not to cite KB/web docs for
-  // pure data-analysis answers, so only show sources it actually cited inline.
   // Teacher-uploaded PDFs (kind 'pdf') are folded into the same "documents"
   // bucket as KB — both are downloadable files, as opposed to web links.
-  const indexed = sources
-    .map((s, i) => ({ s, num: i + 1 }))
-    .filter(({ num }) => text.includes(`[${num}]`))
-
   const kbItems = indexed.filter(({ s }) => s.kind === 'kb' || s.kind === 'pdf')
   const webItems = indexed.filter(({ s }) => s.kind === 'web')
   const hasBoth = kbItems.length > 0 && webItems.length > 0
@@ -690,8 +716,12 @@ export default function MessageList({
           const { text: withoutSuggest, questions } = parseSuggestions(msg.content)
           const thisCardType = getCardTypeFromContent(msg.content)
           const stageActions = !(i === messages.length - 1 && isStreaming) ? getStageActions(messages.slice(0, i + 1), thisCardType) : []
-          const { kb: kbSection, web: webSection, rest: restContent } = parseSourceSections(withoutSuggest)
+          const { kb: kbSection, web: webSection, rest: restContentRaw } = parseSourceSections(withoutSuggest)
           const hasTabs = !!(kbSection && webSection)
+          // Renumber "[N]" citations + the matching source list together so
+          // the visible numbering has no gaps once uncited sources are
+          // dropped — see remapCitations above.
+          const { text: restContent, sources: indexedSources } = remapCitations(restContentRaw, msg.sources ?? [])
           const parts = parseCardParts(restContent)
           const isLast = i === messages.length - 1
           const textContent = parts.filter(p => p.type === 'text').map(p => (p as { type: 'text'; content: string }).content).join('\n').trim()
@@ -775,8 +805,8 @@ export default function MessageList({
                       {savingNoteId === `${msg.id ?? i}` ? 'Saving…' : 'Save to notes'}
                     </button>
                   )}
-                  {!hasTabs && msg.sources && msg.sources.length > 0 && !(isLast && isStreaming) && (
-                    <SourcesSection sources={msg.sources} text={restContent} />
+                  {!hasTabs && indexedSources.length > 0 && !(isLast && isStreaming) && (
+                    <SourcesSection indexed={indexedSources} />
                   )}
                   {(stageActions.length > 0 || questions.length > 0) && (
                     <div className="suggestions">

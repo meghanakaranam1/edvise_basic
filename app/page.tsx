@@ -472,7 +472,7 @@ export default function Page() {
     saveMessage(conversationIdRef.current, 'user', userText, session.user.id).catch(() => {})
   }
 
-  async function doSend(userText: string, kbScope = '', thresholdsOverride?: Thresholds, hidden = false, clarifyToolCallId?: string, notesContext?: string) {
+  async function doSend(userText: string, kbScope = '', thresholdsOverride?: Thresholds, hidden = false, clarifyToolCallId?: string, notesContext?: string, reuseLastBubble = false) {
     if (isStreaming) return
     // A clarifying-question card is sitting unanswered (clarifyToolCallRef is
     // only cleared once the teacher actually answers it, in
@@ -530,7 +530,12 @@ export default function Page() {
     } else {
       apiMessages.current.push({ role: 'user', content: notesContext ? `${userText}\n\n${notesContext}` : userText })
     }
-    addMessage({ role: 'assistant', content: '' })
+    // Normally a fresh empty bubble for the model's new reply — but the
+    // false-completion retry (see awaitingGenerateRef handling below) wants
+    // its streamed response to land in the SAME bubble it just overwrote
+    // with an in-progress note, not a second new one, so one user-visible
+    // action doesn't end up looking like two separate assistant turns.
+    if (!reuseLastBubble) addMessage({ role: 'assistant', content: '' })
     setIsStreaming(true)
     broadcastEdviseTyping('start')
 
@@ -624,6 +629,7 @@ export default function Page() {
         },
       })
 
+      let skipPersist = false
       if (pendingToolCall) {
         // Push proper tool_use block — model will see [tool_use → tool_result] on next turn
         const tc = pendingToolCall as { id: string; input: { question: string; choices: string[] } }
@@ -696,10 +702,11 @@ export default function Page() {
         // reading as two separate "done" messages for one action. Replace
         // it with an honest in-progress note instead of letting it linger.
         replaceLastAssistant(() => 'One moment — finishing this up…')
+        skipPersist = true
         setTimeout(() => {
           doSend(
             `You were in the middle of generating the ${type.replace('_', ' ')} and did not actually call update_plan — the panel is still empty and nothing else happened. Call update_plan now with type="${type}", before writing anything else.`,
-            kbScope, thresholdsOverride, true,
+            kbScope, thresholdsOverride, true, undefined, undefined, true,
           )
         }, 0)
       } else if (awaitingGenerateRef.current && retriedFalseCompletionRef.current) {
@@ -714,8 +721,14 @@ export default function Page() {
         addMessage({ role: 'assistant', content: `Something went wrong generating the ${type.replace('_', ' ')} — want to try again?` })
       }
 
-      // Persist assistant message
-      if (session && conversationIdRef.current) {
+      // Persist assistant message — skipped for the false-completion turn
+      // itself (skipPersist above): that turn's content was just overwritten
+      // in the UI with an in-progress note and is about to be superseded by
+      // the retry's own save, so persisting it here would leave the stale
+      // "false ready" text sitting in Supabase, ready to resurface as the
+      // same duplicate-looking pair of messages on a later conversation
+      // reload even though the live chat no longer shows it.
+      if (session && conversationIdRef.current && !skipPersist) {
         saveMessage(conversationIdRef.current, 'assistant', accumulated).catch(() => {})
       }
     } catch (err) {
