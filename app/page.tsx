@@ -8,6 +8,7 @@ import { openGoogleSheetPicker } from './lib/googlePicker'
 import RightPanel from './components/RightPanel/RightPanel'
 import Sidebar, { type MainView } from './components/Sidebar/Sidebar'
 import LoginPage from './components/Auth/LoginPage'
+import ResetPasswordPage from './components/Auth/ResetPasswordPage'
 import SavedView from './components/SavedView'
 import ConversationsView from './components/ConversationsView'
 import AdminKB from './components/AdminKB'
@@ -58,6 +59,10 @@ export default function Page() {
   // Auth
   const [session, setSession] = useState<SupabaseSession | null>(null)
   const [authLoading, setAuthLoading] = useState(true)
+  // True while the session is a temporary one Supabase attaches after the
+  // teacher clicks a "forgot password" email link — shows the "set new
+  // password" screen instead of the normal app until they actually set one.
+  const [passwordRecovery, setPasswordRecovery] = useState(false)
 
   // Chat
   const [messages, setMessages] = useState<Message[]>([])
@@ -188,9 +193,10 @@ export default function Page() {
       setSession(session)
       setAuthLoading(false)
     })
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       setSession(session)
       setAuthLoading(false)
+      if (event === 'PASSWORD_RECOVERY') setPasswordRecovery(true)
     })
     return () => subscription.unsubscribe()
   }, [])
@@ -1354,6 +1360,7 @@ export default function Page() {
   }
 
   if (!session) return <LoginPage />
+  if (passwordRecovery) return <ResetPasswordPage onDone={() => setPasswordRecovery(false)} />
 
   return (
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>

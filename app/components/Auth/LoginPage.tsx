@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { supabase } from '../../lib/supabase'
 
 export default function LoginPage() {
-  const [mode, setMode] = useState<'login' | 'signup'>('login')
+  const [mode, setMode] = useState<'login' | 'signup' | 'forgot'>('login')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [name, setName] = useState('')
@@ -22,6 +22,16 @@ export default function LoginPage() {
       if (mode === 'login') {
         const { error } = await supabase.auth.signInWithPassword({ email, password })
         if (error) throw error
+      } else if (mode === 'forgot') {
+        // Supabase emails the teacher a link back to this same app with a
+        // temporary recovery session attached — page.tsx listens for the
+        // PASSWORD_RECOVERY auth event and shows the "set new password"
+        // screen instead of the normal app when that session lands.
+        const { error } = await supabase.auth.resetPasswordForEmail(email, {
+          redirectTo: window.location.origin,
+        })
+        if (error) throw error
+        setSuccess('Check your email for a link to reset your password.')
       } else {
         const { data, error } = await supabase.auth.signUp({
           email, password,
@@ -72,7 +82,7 @@ export default function LoginPage() {
         {/* Card */}
         <div style={{ background: 'var(--surface)', borderRadius: 16, border: '1px solid var(--border)', padding: '28px 28px 24px' }}>
           <h2 style={{ fontSize: 16, fontWeight: 600, color: 'var(--text)', textAlign: 'center', marginBottom: 20 }}>
-            {mode === 'login' ? 'Welcome back' : 'Create your account'}
+            {mode === 'login' ? 'Welcome back' : mode === 'forgot' ? 'Reset your password' : 'Create your account'}
           </h2>
 
           {error && (
@@ -103,10 +113,23 @@ export default function LoginPage() {
               <label style={lbl}>Email</label>
               <input style={inp} type="email" value={email} onChange={e => setEmail(e.target.value)} required placeholder="teacher@school.edu" />
             </div>
-            <div>
-              <label style={lbl}>Password</label>
-              <input style={inp} type="password" value={password} onChange={e => setPassword(e.target.value)} required minLength={6} placeholder="••••••••" />
-            </div>
+            {mode !== 'forgot' && (
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                  <label style={lbl}>Password</label>
+                  {mode === 'login' && (
+                    <button
+                      type="button"
+                      onClick={() => { setMode('forgot'); setError(null); setSuccess(null) }}
+                      style={{ background: 'none', border: 'none', color: 'var(--primary)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 11, fontWeight: 600, marginBottom: 5 }}
+                    >
+                      Forgot password?
+                    </button>
+                  )}
+                </div>
+                <input style={inp} type="password" value={password} onChange={e => setPassword(e.target.value)} required minLength={6} placeholder="••••••••" />
+              </div>
+            )}
             <button
               type="submit"
               disabled={loading}
@@ -120,18 +143,18 @@ export default function LoginPage() {
               {loading ? (
                 <span style={{ width: 16, height: 16, border: '2px solid white', borderTopColor: 'transparent', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.7s linear infinite' }} />
               ) : (
-                mode === 'login' ? 'Sign In' : 'Create Account'
+                mode === 'login' ? 'Sign In' : mode === 'forgot' ? 'Send Reset Link' : 'Create Account'
               )}
             </button>
           </form>
 
           <p style={{ textAlign: 'center', fontSize: 13, color: 'var(--text-muted)', marginTop: 18 }}>
-            {mode === 'login' ? "Don't have an account? " : 'Already have an account? '}
+            {mode === 'forgot' ? null : mode === 'login' ? "Don't have an account? " : 'Already have an account? '}
             <button
-              onClick={() => { setMode(mode === 'login' ? 'signup' : 'login'); setError(null); setSuccess(null) }}
+              onClick={() => { setMode(mode === 'signup' ? 'login' : mode === 'forgot' ? 'login' : 'signup'); setError(null); setSuccess(null) }}
               style={{ background: 'none', border: 'none', color: 'var(--primary)', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', fontSize: 13 }}
             >
-              {mode === 'login' ? 'Sign up' : 'Sign in'}
+              {mode === 'login' ? 'Sign up' : mode === 'forgot' ? '← Back to sign in' : 'Sign in'}
             </button>
           </p>
         </div>
