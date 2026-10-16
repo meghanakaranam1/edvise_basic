@@ -290,23 +290,29 @@ export default function MessageInput({
           </div>
 
           {editPeriods !== 'all' && (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, paddingLeft: 22, marginBottom: 10 }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 14px', paddingLeft: 22, marginBottom: 10 }}>
               {periodDetection.allPeriods.map(p => {
                 const checked = editPeriods.includes(p)
                 return (
-                  <button
+                  <label
                     key={p}
-                    type="button"
                     onClick={() => togglePeriod(p)}
-                    style={{
-                      padding: '4px 10px', borderRadius: 20, fontSize: 11.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
-                      border: `1.5px solid ${checked ? '#3E94A5' : '#e4e9f2'}`,
-                      background: checked ? '#eef8fb' : '#f7f9fc',
-                      color: checked ? '#1b6070' : '#7a89b8',
-                    }}
+                    style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontFamily: 'inherit', padding: '3px 0' }}
                   >
-                    {p}
-                  </button>
+                    <span style={{
+                      width: 14, height: 14, borderRadius: 4, flexShrink: 0,
+                      border: `1.5px solid ${checked ? '#3E94A5' : '#c7d0dc'}`,
+                      background: checked ? '#3E94A5' : '#fff',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}>
+                      {checked && (
+                        <svg width="8" height="6" viewBox="0 0 9 7" fill="none">
+                          <path d="M1 3.5L3.2 5.7L8 1" stroke="white" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      )}
+                    </span>
+                    <span style={{ fontSize: 11.5, fontWeight: 600, color: checked ? '#1b6070' : '#4b5563' }}>{p}</span>
+                  </label>
                 )
               })}
             </div>

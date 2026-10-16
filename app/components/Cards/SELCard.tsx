@@ -15,7 +15,7 @@ export interface SELData {
 }
 
 const ON_TRACK_COLOR = '#22a559'
-const GROUP_COLOR = '#6c3fc5'
+const GROUP_COLOR = '#d4a800'
 
 export default function SELCard({ data }: { data: SELData }) {
   const [activeIdx, setActiveIdx] = useState(0)

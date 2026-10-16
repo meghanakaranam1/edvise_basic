@@ -2,15 +2,15 @@
 import { useState, useEffect, useRef } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import type { GeneratedDocument } from './types'
+import type { GeneratedDocument, ArtifactVersion } from './types'
 import { AnchoredComments } from './AnchoredComments'
 import { EditableText } from './EditableText'
 import { downloadPdf, type PdfBlock } from '../../lib/exportPdf'
 
 const markdownComponents = {
-  h1: ({ children }: { children?: React.ReactNode }) => <div style={{ fontWeight: 700, fontSize: 13, color: '#2A3B7C', marginTop: 12, marginBottom: 4 }}>{children}</div>,
-  h2: ({ children }: { children?: React.ReactNode }) => <div style={{ fontWeight: 700, fontSize: 12, color: '#2A3B7C', marginTop: 10, marginBottom: 4 }}>{children}</div>,
-  h3: ({ children }: { children?: React.ReactNode }) => <div style={{ fontWeight: 600, fontSize: 12, color: '#2A3B7C', marginTop: 8, marginBottom: 4 }}>{children}</div>,
+  h1: ({ children }: { children?: React.ReactNode }) => <div style={{ fontWeight: 700, fontSize: 16, color: '#2A3B7C', marginTop: 12, marginBottom: 4 }}>{children}</div>,
+  h2: ({ children }: { children?: React.ReactNode }) => <div style={{ fontWeight: 700, fontSize: 15, color: '#2A3B7C', marginTop: 10, marginBottom: 4 }}>{children}</div>,
+  h3: ({ children }: { children?: React.ReactNode }) => <div style={{ fontWeight: 600, fontSize: 14, color: '#2A3B7C', marginTop: 8, marginBottom: 4 }}>{children}</div>,
   p: ({ children }: { children?: React.ReactNode }) => <p style={{ margin: '0 0 8px 0' }}>{children}</p>,
   ul: ({ children }: { children?: React.ReactNode }) => <ul style={{ paddingLeft: 18, margin: '4px 0 8px 0' }}>{children}</ul>,
   ol: ({ children }: { children?: React.ReactNode }) => <ol style={{ paddingLeft: 18, margin: '4px 0 8px 0' }}>{children}</ol>,
@@ -27,6 +27,9 @@ const markdownComponents = {
 // cosmetic (accent color, icon, copy) — passed in as props.
 export default function GeneratedDocTab({
   data,
+  history,
+  activeId,
+  onSelectVersion,
   generating,
   onGenerate,
   onSave,
@@ -44,6 +47,11 @@ export default function GeneratedDocTab({
   downloadFallbackName,
 }: {
   data?: GeneratedDocument
+  // Every past generated version of this document type, so the teacher can
+  // click back after generating a new one instead of losing the old one.
+  history?: ArtifactVersion[]
+  activeId?: string
+  onSelectVersion?: (id: string) => void
   generating: boolean
   onGenerate: () => void
   onSave?: () => void
@@ -63,6 +71,16 @@ export default function GeneratedDocTab({
   loadingLabel: string
   downloadFallbackName: string
 }) {
+  const [showHistory, setShowHistory] = useState(false)
+  const historyPanelRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!showHistory) return
+    function onOutside(e: MouseEvent) {
+      if (historyPanelRef.current && !historyPanelRef.current.contains(e.target as Node)) setShowHistory(false)
+    }
+    document.addEventListener('mousedown', onOutside)
+    return () => document.removeEventListener('mousedown', onOutside)
+  }, [showHistory])
   const [doc, setDoc] = useState<GeneratedDocument | undefined>(data)
   const [saved, setSaved] = useState(false)
   useEffect(() => { setDoc(data); setSaved(false) }, [data])
@@ -140,21 +158,69 @@ export default function GeneratedDocTab({
   }
 
   return (
-    <div style={{ fontSize: 13, color: '#374151', lineHeight: 1.6 }}>
+    <div style={{ fontSize: 14, color: '#374151', lineHeight: 1.6 }}>
     <AnchoredComments onComment={onComment} resetKey={genVersion}>
       {/* Toolbar */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, paddingBottom: 12, borderBottom: '1px solid #f0f2f8' }}>
-        <span style={{ fontSize: 11, color: '#9ca3af' }}>Click any text to edit</span>
-        <button
-          onClick={downloadDoc}
-          style={{ padding: '4px 10px', border: '1px solid #e4e9f2', borderRadius: 7, background: 'white', color: '#7a89b8', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
-        >
-          ↓ Download
-        </button>
+        <span style={{ fontSize: 12, color: '#9ca3af' }}>Click any text to edit</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {history && history.length > 1 && (
+            <div ref={historyPanelRef} style={{ position: 'relative' }}>
+              <button
+                onClick={() => setShowHistory(v => !v)}
+                title="Past versions"
+                style={{
+                  padding: '4px 10px', border: '1px solid #e4e9f2', borderRadius: 7,
+                  background: showHistory ? '#f7f9fc' : 'white', color: '#7a89b8', fontSize: 13,
+                  fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', display: 'inline-flex',
+                  alignItems: 'center', gap: 5,
+                }}
+              >
+                📑 {history.length} versions
+              </button>
+              {showHistory && (
+                <div style={{
+                  position: 'absolute', top: '100%', right: 0, marginTop: 6, width: 260, maxHeight: 280,
+                  overflowY: 'auto', background: 'white', border: '1px solid #e4e9f2', borderRadius: 10,
+                  boxShadow: '0 8px 24px rgba(0,0,0,0.12)', zIndex: 20, padding: 6,
+                }}>
+                  {history.slice().reverse().map((entry, idx) => {
+                    const versionNum = history.length - idx
+                    const isActive = entry.id === activeId
+                    return (
+                      <button
+                        key={entry.id}
+                        onClick={() => { onSelectVersion?.(entry.id); setShowHistory(false) }}
+                        style={{
+                          width: '100%', textAlign: 'left', padding: '8px 10px', borderRadius: 7, border: 'none',
+                          background: isActive ? '#f0f2f8' : 'transparent', cursor: 'pointer', fontFamily: 'inherit',
+                          display: 'flex', flexDirection: 'column', gap: 1, marginBottom: 2,
+                        }}
+                      >
+                        <span style={{ fontSize: 12.5, fontWeight: 600, color: isActive ? accentColor : '#374151' }}>
+                          {isActive ? '✓ ' : ''}Version {versionNum}
+                        </span>
+                        <span style={{ fontSize: 11, color: '#9ca3af', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {entry.doc.title}{entry.doc.date_created ? ` · ${entry.doc.date_created}` : ''}
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+          <button
+            onClick={downloadDoc}
+            style={{ padding: '4px 10px', border: '1px solid #e4e9f2', borderRadius: 7, background: 'white', color: '#7a89b8', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
+          >
+            ↓ Download
+          </button>
+        </div>
       </div>
 
       {/* Breadcrumb */}
-      <div style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 10 }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 10 }}>
         Edvise · {breadcrumbLabel}
       </div>
 
@@ -162,12 +228,12 @@ export default function GeneratedDocTab({
       <EditableText
         value={doc.title}
         onChange={setTitle}
-        style={{ fontWeight: 700, fontSize: 15, color: '#2A3B7C', lineHeight: 1.4, marginBottom: 14 }}
+        style={{ fontWeight: 700, fontSize: 18, color: '#2A3B7C', lineHeight: 1.4, marginBottom: 14 }}
       />
 
       {/* Meta */}
-      <div style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 20, paddingBottom: 16, borderBottom: '1px solid #f0f2f8' }}>
-        Generated <span style={{ fontSize: 12, fontWeight: 500, color: '#374151', textTransform: 'none', letterSpacing: 'normal' }}>{dateCreated}</span>
+      <div style={{ fontSize: 11, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 20, paddingBottom: 16, borderBottom: '1px solid #f0f2f8' }}>
+        Generated <span style={{ fontSize: 13, fontWeight: 500, color: '#374151', textTransform: 'none', letterSpacing: 'normal' }}>{dateCreated}</span>
       </div>
 
       {/* Sections */}
@@ -178,14 +244,14 @@ export default function GeneratedDocTab({
             <EditableText
               value={section.title}
               onChange={v => setSectionTitle(i, v)}
-              style={{ fontSize: 10, fontWeight: 800, color: accentColor, textTransform: 'uppercase', letterSpacing: '0.08em', flex: 1 }}
+              style={{ fontSize: 11, fontWeight: 800, color: accentColor, textTransform: 'uppercase', letterSpacing: '0.08em', flex: 1 }}
             />
           </div>
           <EditableText
             value={section.content}
             onChange={v => setSectionContent(i, v)}
             multiline
-            style={{ fontSize: 12, color: '#374151', lineHeight: 1.75 }}
+            style={{ fontSize: 14, color: '#374151', lineHeight: 1.75 }}
             renderDisplay={content => (
               <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
                 {content}
@@ -200,13 +266,13 @@ export default function GeneratedDocTab({
         <div style={{ marginBottom: 16 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
             <div style={{ width: 3, height: 18, background: '#6c3fc5', borderRadius: 2, flexShrink: 0 }} />
-            <div style={{ fontSize: 10, fontWeight: 800, color: '#6c3fc5', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+            <div style={{ fontSize: 11, fontWeight: 800, color: '#6c3fc5', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
               Closing — Priority Actions
             </div>
           </div>
           <ol style={{ paddingLeft: 20, margin: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
             {doc.closing_actions!.map((action, i) => (
-              <li key={i} style={{ fontSize: 12, color: '#374151', lineHeight: 1.65 }}>
+              <li key={i} style={{ fontSize: 14, color: '#374151', lineHeight: 1.65 }}>
                 <EditableText value={action} onChange={v => setClosingAction(i, v)} />
               </li>
             ))}
@@ -219,18 +285,18 @@ export default function GeneratedDocTab({
       {onSave && (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 8, marginTop: 16, paddingTop: 14, borderTop: '1px solid #f0f2f8' }}>
           {saved ? (
-            <div style={{ gridColumn: '1 / -1', textAlign: 'center', fontSize: 12, fontWeight: 600, color: savedColor ?? accentColor }}>✓ Saved to My Actions</div>
+            <div style={{ gridColumn: '1 / -1', textAlign: 'center', fontSize: 12, fontWeight: 600, color: savedColor ?? accentColor }}>✓ Saved to My Artifacts</div>
           ) : (
             <>
               <button onClick={onDiscard} style={{ padding: '10px', border: '1px solid #e4e9f2', borderRadius: 10, background: 'white', color: '#374151', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Discard</button>
-              <button onClick={() => { onSave(); setSaved(true) }} style={{ padding: '10px', border: 'none', borderRadius: 10, background: accentColor, color: 'white', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Save to my actions</button>
+              <button onClick={() => { onSave(); setSaved(true) }} style={{ padding: '10px', border: 'none', borderRadius: 10, background: accentColor, color: 'white', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Save to my artifacts</button>
             </>
           )}
         </div>
       )}
 
       {/* Footer */}
-      <div style={{ fontSize: 11, color: '#9ca3af', textAlign: 'center', paddingTop: 8, marginTop: onSave ? 0 : 16 }}>
+      <div style={{ fontSize: 12, color: '#9ca3af', textAlign: 'center', paddingTop: 8, marginTop: onSave ? 0 : 16 }}>
         Generated by <strong style={{ color: '#2A3B7C' }}>Edvise</strong> · {dateCreated}
       </div>
     </div>

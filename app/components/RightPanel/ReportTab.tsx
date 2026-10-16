@@ -1,9 +1,12 @@
 'use client'
-import type { Report } from './types'
+import type { Report, ArtifactVersion } from './types'
 import GeneratedDocTab from './GeneratedDocTab'
 
 export default function ReportTab({
   data,
+  history,
+  activeId,
+  onSelectVersion,
   generating,
   onGenerate,
   onSave,
@@ -12,6 +15,9 @@ export default function ReportTab({
   onChange,
 }: {
   data?: Report
+  history?: ArtifactVersion[]
+  activeId?: string
+  onSelectVersion?: (id: string) => void
   generating: boolean
   onGenerate: () => void
   onSave?: () => void
@@ -22,6 +28,9 @@ export default function ReportTab({
   return (
     <GeneratedDocTab
       data={data}
+      history={history}
+      activeId={activeId}
+      onSelectVersion={onSelectVersion}
       generating={generating}
       onGenerate={onGenerate}
       onSave={onSave}

@@ -89,23 +89,29 @@ export default function PeriodPickerCard({
         {radioRow('custom', 'Choose specific periods', 'Pick exactly which period(s) to include — e.g. just the most recent one, to see who’s still at-risk right now.')}
 
         {choice === 'custom' && (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, padding: '8px 4px 2px 34px' }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 16px', padding: '8px 4px 2px 34px' }}>
             {detection.allPeriods.map(p => {
               const checked = customPeriods.has(p)
               return (
-                <button
+                <label
                   key={p}
-                  type="button"
                   onClick={() => toggle(p)}
-                  style={{
-                    padding: '5px 11px', borderRadius: 20, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
-                    border: `1.5px solid ${checked ? '#3E94A5' : '#e4e9f2'}`,
-                    background: checked ? '#eef8fb' : '#f7f9fc',
-                    color: checked ? '#1b6070' : '#7a89b8',
-                  }}
+                  style={{ display: 'flex', alignItems: 'center', gap: 7, cursor: 'pointer', fontFamily: 'inherit', padding: '4px 0' }}
                 >
-                  {p}
-                </button>
+                  <span style={{
+                    width: 15, height: 15, borderRadius: 4, flexShrink: 0,
+                    border: `1.5px solid ${checked ? '#3E94A5' : '#c7d0dc'}`,
+                    background: checked ? '#3E94A5' : '#fff',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    {checked && (
+                      <svg width="9" height="7" viewBox="0 0 9 7" fill="none">
+                        <path d="M1 3.5L3.2 5.7L8 1" stroke="white" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    )}
+                  </span>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: checked ? '#1b6070' : '#4b5563' }}>{p}</span>
+                </label>
               )
             })}
           </div>

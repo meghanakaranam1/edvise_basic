@@ -21,6 +21,21 @@ function stripMarkdown(text: string): string {
     .replace(/^[-*]\s+/gm, '• ')
 }
 
+// jsPDF's built-in "helvetica" is a core PDF Standard14 font restricted to
+// WinAnsiEncoding — it has no glyph for arrows (→ etc), and feeding it one
+// doesn't just drop the character, it throws off the font's per-character
+// width table and renders garbled, oddly-spaced text for the rest of that
+// line (exactly what showed up in a downloaded report that compared
+// quarters with "Q1: X → Q2: Y"). Swap to ASCII-safe equivalents before
+// layout rather than embedding a full Unicode font just for this.
+function sanitizeForPdf(text: string): string {
+  return text
+    .replace(/→/g, '->')
+    .replace(/←/g, '<-')
+    .replace(/↔/g, '<->')
+    .replace(/⇒/g, '=>')
+}
+
 // Shared by Action Plan / Agenda / Report "Download" buttons — a real PDF
 // (not a .txt file), built client-side with simple top-to-bottom block
 // layout and automatic pagination. Good enough for structured text content
@@ -64,7 +79,7 @@ export function downloadPdf(filename: string, blocks: PdfBlock[]) {
     doc.setFontSize(fontSize)
     doc.setTextColor(color[0], color[1], color[2])
 
-    const text = block.type === 'body' ? stripMarkdown(block.text) : block.text
+    const text = sanitizeForPdf(block.type === 'body' ? stripMarkdown(block.text) : block.text)
     const lines = doc.splitTextToSize(prefix + text, maxWidth - indent) as string[]
     for (const line of lines) {
       ensureSpace(lineHeight)

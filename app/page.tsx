@@ -12,8 +12,9 @@ import ResetPasswordPage from './components/Auth/ResetPasswordPage'
 import SavedView from './components/SavedView'
 import ConversationsView from './components/ConversationsView'
 import AdminKB from './components/AdminKB'
+import SchoolKBView from './components/SchoolKBView'
 import SchoolContextSettings from './components/Settings/SchoolContextSettings'
-import type { Note, ArtifactType, Artifacts, Report } from './components/RightPanel/types'
+import type { Note, ArtifactType, Artifacts, Report, GeneratedDocument, ArtifactHistory, ActiveArtifactIds } from './components/RightPanel/types'
 import { parseCsv, parseCsvText, type CsvMeta } from './lib/csvUtils'
 import { isSpreadsheetFile, parseWorkbook } from './lib/xlsxParse'
 import { sheetsToCsv, summarizeSheet, chooseSetupSheet, type SheetTable } from './lib/sheetMerge'
@@ -39,7 +40,7 @@ import {
 
 type Phase = 'idle' | 'confirming' | 'criteria' | 'chatting'
 
-const LIBRARY_VIEWS = new Set(['library-kb', 'library-all', 'library-strategy', 'library-reports', 'library-pending'])
+const LIBRARY_VIEWS = new Set(['library-kb', 'library-school-kb', 'library-all', 'library-strategy', 'library-reports', 'library-pending'])
 const ACTIONS_VIEWS = new Set(['actions'])
 const SETTINGS_VIEWS = new Set(['settings', 'kb'])
 const CONVERSATIONS_VIEW = 'conversations'
@@ -198,8 +199,49 @@ export default function Page() {
     const rules = await listContextRules(userId)
     schoolContextRef.current = rules.filter(r => r.enabled).map(r => r.text).join('\n\n')
   }
+  // The teacher's own school, for scoping the "School-based" KB toggle and
+  // the shared school knowledge base. Read from the `profiles` table, NOT
+  // session.user.user_metadata — school_name is only ever written to
+  // `profiles` (at signup), never into auth user_metadata, so reading from
+  // user_metadata here always came back empty and the School-based KB could
+  // never actually match anything.
+  const [userSchool, setUserSchool] = useState<string | undefined>()
   const [artifacts, setArtifacts] = useState<Artifacts>({})
+  // Every generated version of each document type, so the teacher can click
+  // back through past reports/agendas/action-plans instead of a new
+  // generation silently replacing the one they had open. See the "document
+  // history" dropdown in GeneratedDocTab.tsx.
+  const [artifactHistory, setArtifactHistory] = useState<ArtifactHistory>({ action_plan: [], agenda: [], report: [] })
+  const [activeArtifactId, setActiveArtifactId] = useState<ActiveArtifactIds>({ action_plan: undefined, agenda: undefined, report: undefined })
   const [generating, setGenerating] = useState<string | null>(null)
+
+  // Generating a NEW document (fresh "Generate report" etc) — adds a new
+  // version to history and makes it the active one.
+  function pushArtifactVersion(type: ArtifactType, doc: GeneratedDocument) {
+    const id = Date.now().toString()
+    setArtifacts(prev => ({ ...prev, [type]: doc }))
+    setArtifactHistory(prev => ({ ...prev, [type]: [...prev[type], { id, doc }] }))
+    setActiveArtifactId(prev => ({ ...prev, [type]: id }))
+  }
+
+  // Editing the CURRENTLY displayed document (inline edit, or a scoped
+  // anchored-comment revision) — updates that same version in place rather
+  // than creating a new history entry.
+  function updateActiveArtifact(type: ArtifactType, doc: GeneratedDocument) {
+    setArtifacts(prev => ({ ...prev, [type]: doc }))
+    const id = activeArtifactId[type]
+    if (!id) return
+    setArtifactHistory(prev => ({ ...prev, [type]: prev[type].map(h => h.id === id ? { ...h, doc } : h) }))
+  }
+
+  // Click-back-through-history — swaps which past version is displayed
+  // without generating anything new.
+  function handleSelectArtifactVersion(type: ArtifactType, id: string) {
+    const entry = artifactHistory[type].find(h => h.id === id)
+    if (!entry) return
+    setArtifacts(prev => ({ ...prev, [type]: entry.doc }))
+    setActiveArtifactId(prev => ({ ...prev, [type]: id }))
+  }
 
   // Load auth session
   useEffect(() => {
@@ -230,6 +272,8 @@ export default function Page() {
     setFileLabel(undefined)
     setNotes([])
     setArtifacts({})
+    setArtifactHistory({ action_plan: [], agenda: [], report: [] })
+    setActiveArtifactId({ action_plan: undefined, agenda: undefined, report: undefined })
 
     // Ensure a profile row exists for this user (handles accounts created outside normal signup)
     if (session?.user) {
@@ -245,9 +289,13 @@ export default function Page() {
       ).then(({ error }) => {
         if (error) console.error('profile upsert failed:', error.message, '| code:', error.code, '| details:', error.details, '| hint:', error.hint)
       })
+      supabase.from('profiles').select('school_name').eq('id', session.user.id).single().then(({ data }) => {
+        setUserSchool(data?.school_name?.trim() || undefined)
+      })
       refreshSchoolContext(session.user.id)
     } else {
       schoolContextRef.current = ''
+      setUserSchool(undefined)
     }
   }, [session?.user?.id])
 
@@ -502,7 +550,7 @@ export default function Page() {
         columnMapping: columnMapping ?? undefined,
         schoolContext: schoolContextRef.current || undefined,
         kbScope,
-        userSchool: session?.user?.user_metadata?.school_name || undefined,
+        userSchool,
         onChunk(text) {
           accumulated += text
           replaceLastAssistant(() => accumulated)
@@ -1071,6 +1119,8 @@ export default function Page() {
     // right-panel state would otherwise carry over.
     setNotes([])
     setArtifacts({})
+    setArtifactHistory({ action_plan: [], agenda: [], report: [] })
+    setActiveArtifactId({ action_plan: undefined, agenda: undefined, report: undefined })
     setGenerating(null)
     setPanelOpen(false)
     setPanelTab('notes')
@@ -1142,6 +1192,8 @@ export default function Page() {
     // still sitting there.
     setNotes([])
     setArtifacts({})
+    setArtifactHistory({ action_plan: [], agenda: [], report: [] })
+    setActiveArtifactId({ action_plan: undefined, agenda: undefined, report: undefined })
     setGenerating(null)
     setPanelOpen(false)
     setPanelTab('notes')
@@ -1287,8 +1339,8 @@ export default function Page() {
     apiMessages.current = []
   }
 
-  function addNote(content: string) {
-    setNotes(prev => [...prev, { id: Date.now().toString(), content }])
+  function addNote(content: string, images?: string[]) {
+    setNotes(prev => [...prev, { id: Date.now().toString(), content, images }])
     setPanelOpen(true)
     setPanelTab('notes')
   }
@@ -1346,7 +1398,7 @@ export default function Page() {
         ? notes.filter(n => noteIds.includes(n.id))
         : notes
       const result = await generateArtifact(type, apiMessages.current, selectedNotes)
-      setArtifacts(prev => ({ ...prev, [type]: result }))
+      pushArtifactVersion(type, result as GeneratedDocument)
     } catch (err) {
       console.error('Artifact generation failed:', err)
       // Without this, a failed generation left the panel silently stuck on
@@ -1377,7 +1429,7 @@ export default function Page() {
 
     try {
       const result = await generateArtifact(type, [], undefined, { currentDocument: current, quotedText, comment }) as { document: Record<string, unknown>; summary: string }
-      setArtifacts(prev => ({ ...prev, [type]: result.document }))
+      updateActiveArtifact(type, result.document as GeneratedDocument)
       const newTitle = (result.document?.title as string | undefined) ?? title
       setMessages(prev => prev.map(m =>
         (m.role === 'card' && m.type === 'comment_relay' && m.id === relayId)
@@ -1409,7 +1461,10 @@ export default function Page() {
   }
 
   function handleDiscardArtifact(type: ArtifactType) {
+    const id = activeArtifactId[type]
     setArtifacts(prev => ({ ...prev, [type]: undefined }))
+    setActiveArtifactId(prev => ({ ...prev, [type]: undefined }))
+    if (id) setArtifactHistory(prev => ({ ...prev, [type]: prev[type].filter(h => h.id !== id) }))
   }
 
   const inputDisabled = isStreaming || phase === 'confirming' || phase === 'criteria'
@@ -1459,6 +1514,8 @@ export default function Page() {
             />
           ) : (mainView === 'kb' || mainView === 'library-kb') && session?.user?.email === process.env.NEXT_PUBLIC_ADMIN_EMAIL ? (
             <AdminKB session={session} />
+          ) : mainView === 'library-school-kb' ? (
+            <SchoolKBView session={session} userSchool={userSchool} onUserSchoolChange={setUserSchool} />
           ) : mainView === 'library-pending' && session?.user?.email === process.env.NEXT_PUBLIC_ADMIN_EMAIL ? (
             <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: 14 }}>
               Pending approval coming soon
@@ -1591,12 +1648,15 @@ export default function Page() {
         notes={notes}
         onDeleteNote={deleteNote}
         artifacts={artifacts}
+        artifactHistory={artifactHistory}
+        activeArtifactId={activeArtifactId}
+        onSelectArtifactVersion={handleSelectArtifactVersion}
         generating={generating}
         onRequestGenerate={requestGenerateFromNotes}
         onSave={handleSaveArtifact}
         onDiscard={handleDiscardArtifact}
         onComment={handleArtifactComment}
-        onArtifactChange={(type, updated) => setArtifacts(prev => ({ ...prev, [type]: updated }))}
+        onArtifactChange={(type, updated) => updateActiveArtifact(type, updated)}
         messages={messages}
         showSharedAnalysis={ENABLE_TEAM_SHARING && members.length > 1}
       />

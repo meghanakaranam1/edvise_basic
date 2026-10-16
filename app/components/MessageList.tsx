@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import DataConfirmCard from './Cards/DataConfirmCard'
@@ -400,6 +400,14 @@ export function parseCardParts(content: string): Part[] {
   return parts
 }
 
+// Tags a dashboard card (risk overview, SEL factor analysis, grade
+// comparison, student table, etc.) with a ref so the single "Save to notes"
+// button for this turn can screenshot it (via html2canvas) alongside the
+// turn's text, instead of a separate per-card control.
+function CardSnapshotTarget({ cardKey, registerRef, children }: { cardKey: string; registerRef: (key: string, el: HTMLDivElement | null) => void; children: ReactNode }) {
+  return <div ref={el => registerRef(cardKey, el)}>{children}</div>
+}
+
 export function renderCard(cardType: string, data: unknown, key: string | number, onAskRoster?: (prompt: string) => void) {
   if (cardType === 'risk_overview') {
     return <RiskOverviewCard key={key} data={data as RiskOverviewData} onAskRoster={onAskRoster} />
@@ -436,7 +444,7 @@ export default function MessageList({
   onStarterClick: (text: string) => void
   onSuggestionClick: (text: string, needsKB: boolean) => void
   onFocusInput?: () => void
-  onAddNote?: (content: string) => void
+  onAddNote?: (content: string, images?: string[]) => void
   // Reopens the right panel to the given artifact tab — fired when the
   // teacher clicks a "Used Claude Docs" reference card (comment_relay),
   // mirroring claude.ai's click-to-reopen-the-artifact behavior.
@@ -446,6 +454,36 @@ export default function MessageList({
   const threadRef = useRef<HTMLDivElement>(null)
   const autoScroll = useRef(true)
   const prevCount = useRef(0)
+  // Dashboard card DOM nodes, keyed by "<messageKey>-<partIndex>", so
+  // "Save to notes" can screenshot every card in a turn alongside its text.
+  const cardRefsMap = useRef<Map<string, HTMLDivElement>>(new Map())
+  const [savingNoteId, setSavingNoteId] = useState<string | null>(null)
+
+  function registerCardRef(key: string, el: HTMLDivElement | null) {
+    if (el) cardRefsMap.current.set(key, el)
+    else cardRefsMap.current.delete(key)
+  }
+
+  async function handleSaveToNotes(msgKey: string, textContent: string) {
+    if (!onAddNote || savingNoteId) return
+    setSavingNoteId(msgKey)
+    try {
+      const prefix = `${msgKey}-`
+      const cardEntries = Array.from(cardRefsMap.current.entries()).filter(([k]) => k.startsWith(prefix))
+      let images: string[] | undefined
+      if (cardEntries.length > 0) {
+        const { default: html2canvas } = await import('html2canvas')
+        images = []
+        for (const [, el] of cardEntries) {
+          const canvas = await html2canvas(el, { backgroundColor: '#ffffff', scale: 2 })
+          images.push(canvas.toDataURL('image/png'))
+        }
+      }
+      onAddNote(textContent, images)
+    } finally {
+      setSavingNoteId(null)
+    }
+  }
 
   function onThreadScroll() {
     const el = threadRef.current
@@ -638,11 +676,12 @@ export default function MessageList({
                   {msg.tableCsvs?.map((t, j) => {
                     const { columns, rows } = parseTableCsv(t.csv)
                     return (
-                      <StudentTableCard
-                        key={`tcsv-${j}`}
-                        data={{ filename: t.filename, columns, rows }}
-                        rawCsv={t.csv}
-                      />
+                      <CardSnapshotTarget key={`tcsv-${j}`} cardKey={`${msg.id ?? i}-tcsv-${j}`} registerRef={registerCardRef}>
+                        <StudentTableCard
+                          data={{ filename: t.filename, columns, rows }}
+                          rawCsv={t.csv}
+                        />
+                      </CardSnapshotTarget>
                     )
                   })}
                   {hasTabs && kbSection && webSection && (
@@ -654,7 +693,9 @@ export default function MessageList({
                         <ReactMarkdown key={j} remarkPlugins={[remarkGfm]}>{part.content}</ReactMarkdown>
                       ) : null
                     ) : (
-                      renderCard(part.cardType, part.data, j, (prompt) => onSuggestionClick(prompt, false))
+                      <CardSnapshotTarget key={j} cardKey={`${msg.id ?? i}-${j}`} registerRef={registerCardRef}>
+                        {renderCard(part.cardType, part.data, j, (prompt) => onSuggestionClick(prompt, false))}
+                      </CardSnapshotTarget>
                     )
                   )}
                   {msg.csvs?.map((csv, j) => (
@@ -689,9 +730,10 @@ export default function MessageList({
                   {isLast && isStreaming && parts.length === 0 && (
                     <div className="typing"><span /><span /><span /></div>
                   )}
-                  {onAddNote && textContent && !(isLast && isStreaming) && (
+                  {onAddNote && (textContent || parts.some(p => p.type === 'card') || (msg.tableCsvs?.length ?? 0) > 0) && !(isLast && isStreaming) && (
                     <button
-                      onClick={() => onAddNote(textContent)}
+                      onClick={() => handleSaveToNotes(`${msg.id ?? i}`, textContent)}
+                      disabled={savingNoteId === `${msg.id ?? i}`}
                       className="save-note-btn"
                       title="Save to notes"
                     >
@@ -699,7 +741,7 @@ export default function MessageList({
                         <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
                         <polyline points="14 2 14 8 20 8"/>
                       </svg>
-                      Save to notes
+                      {savingNoteId === `${msg.id ?? i}` ? 'Saving…' : 'Save to notes'}
                     </button>
                   )}
                   {!hasTabs && msg.sources && msg.sources.length > 0 && !(isLast && isStreaming) && (

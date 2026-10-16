@@ -6,7 +6,7 @@ import AgendaTab from './AgendaTab'
 import ReportTab from './ReportTab'
 import SharedAnalysisTab from './SharedAnalysisTab'
 import type { Message } from '../MessageList'
-import type { Note, ArtifactType, Artifacts } from './types'
+import type { Note, ArtifactType, Artifacts, ArtifactHistory, ActiveArtifactIds } from './types'
 
 const TABS: { id: string; label: string }[] = [
   { id: 'notes',       label: 'Notes' },
@@ -40,6 +40,9 @@ export default function RightPanel({
   notes,
   onDeleteNote,
   artifacts,
+  artifactHistory,
+  activeArtifactId,
+  onSelectArtifactVersion,
   generating,
   onRequestGenerate,
   onSave,
@@ -58,6 +61,13 @@ export default function RightPanel({
   notes: Note[]
   onDeleteNote: (id: string) => void
   artifacts: Artifacts
+  // Every past generated version per type, and which one is currently
+  // displayed — drives the document-history dropdown in GeneratedDocTab so
+  // generating a new report doesn't bury the previous one. Session-only,
+  // same lifespan as `artifacts`.
+  artifactHistory: ArtifactHistory
+  activeArtifactId: ActiveArtifactIds
+  onSelectArtifactVersion: (type: ArtifactType, id: string) => void
   generating: string | null
   // ALL three types route through the real chat clarifying-question flow —
   // none of them have a fixed template anymore, so Claude always needs to
@@ -304,6 +314,9 @@ export default function RightPanel({
             {tab === 'action_plan' && (
               <ActionPlanTab
                 data={artifacts.action_plan}
+                history={artifactHistory.action_plan}
+                activeId={activeArtifactId.action_plan}
+                onSelectVersion={id => onSelectArtifactVersion('action_plan', id)}
                 generating={generating === 'action_plan'}
                 onGenerate={() => handleGenerate('action_plan')}
                 onSave={() => onSave('action_plan')}
@@ -315,6 +328,9 @@ export default function RightPanel({
             {tab === 'agenda' && (
               <AgendaTab
                 data={artifacts.agenda}
+                history={artifactHistory.agenda}
+                activeId={activeArtifactId.agenda}
+                onSelectVersion={id => onSelectArtifactVersion('agenda', id)}
                 generating={generating === 'agenda'}
                 onGenerate={() => handleGenerate('agenda')}
                 onSave={() => onSave('agenda')}
@@ -326,6 +342,9 @@ export default function RightPanel({
             {tab === 'report' && (
               <ReportTab
                 data={artifacts.report}
+                history={artifactHistory.report}
+                activeId={activeArtifactId.report}
+                onSelectVersion={id => onSelectArtifactVersion('report', id)}
                 generating={generating === 'report'}
                 onGenerate={() => handleGenerate('report')}
                 onSave={() => onSave('report')}

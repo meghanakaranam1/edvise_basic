@@ -89,15 +89,24 @@ export async function POST(req: NextRequest) {
   const preview = await extractTextPreview(buf, filename, ext)
   const tags = await generateTags(preview, filename)
 
-  // Auto-approve global docs if admin
+  // Global KB uploads still need admin review (reaches every school).
+  // School-scoped uploads are auto-approved — self-serve, no admin
+  // involved — since they're already contained to the uploader's own
+  // school, same gatekeeping the Change-school removal already assumed.
   const isAdmin = user.email === ADMIN_EMAIL
-  const status = (scope === 'global' && isAdmin) ? 'approved' : 'pending'
+  const status = (scope === 'global' && isAdmin) ? 'approved' : scope === 'school' ? 'approved' : 'pending'
 
   // "school"-scoped docs are tagged with the uploader's own school so
-  // search can actually isolate them per school (previously always null —
-  // every school's uploads were silently visible to every other school).
+  // search can actually isolate them per school. Read from the `profiles`
+  // table, not user_metadata — school_name is only ever written there (at
+  // signup), so reading user_metadata here always came back null and no
+  // school-scoped doc could ever be matched back to anyone's school.
   // "global" docs intentionally have no single owning school.
-  const schoolName = scope === 'school' ? (user.user_metadata?.school_name ?? null) : null
+  let schoolName: string | null = null
+  if (scope === 'school') {
+    const { data: profile } = await supabaseAdmin().from('profiles').select('school_name').eq('id', user.id).single()
+    schoolName = profile?.school_name?.trim() || null
+  }
 
   const { data, error } = await supabaseAdmin().from('kb_documents').insert({
     filename,

@@ -92,7 +92,9 @@ export default function NotesTab({
                 }}
               >
                 <span style={{ fontSize: 12, fontWeight: 500, color: '#2A3B7C', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {stripMarkdown(note.content).slice(0, 55)}…
+                  {!note.content.trim() && note.images?.length
+                    ? `📷 ${note.images.length > 1 ? `${note.images.length} saved images` : 'Saved image'}`
+                    : `${stripMarkdown(note.content).slice(0, 55)}…`}
                 </span>
                 <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
                   <button
@@ -106,7 +108,17 @@ export default function NotesTab({
               </div>
               {open[note.id] && (
                 <div style={{ padding: '10px 12px', fontSize: 12, color: '#374151', lineHeight: 1.65, borderTop: '1px solid #e4e9f2' }}>
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{note.content.replace(/<!--[\s\S]*?-->/g, '').trim()}</ReactMarkdown>
+                  {note.images?.map((src, idx) => (
+                    <img
+                      key={idx}
+                      src={src}
+                      alt="Saved dashboard card"
+                      style={{ maxWidth: '100%', borderRadius: 6, border: '1px solid #e4e9f2', display: 'block', marginBottom: 10 }}
+                    />
+                  ))}
+                  {note.content.trim() && (
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{note.content.replace(/<!--[\s\S]*?-->/g, '').trim()}</ReactMarkdown>
+                  )}
                 </div>
               )}
             </div>

@@ -16,8 +16,19 @@ export async function GET(req: NextRequest) {
     .select('id, filename, scope, status, tags, file_type, category, created_at, uploaded_by, school_name')
     .order('created_at', { ascending: false })
 
-  // Non-admins only see their own uploads
-  if (!isAdmin) query.eq('uploaded_by', user.id)
+  // Non-admins see their own uploads (any scope) plus every "school"-scoped
+  // doc that matches their own school — so the shared school KB actually
+  // shows what colleagues at the same school have uploaded, not just a
+  // teacher's own files.
+  if (!isAdmin) {
+    const { data: profile } = await supabaseAdmin().from('profiles').select('school_name').eq('id', user.id).single()
+    const school = profile?.school_name?.trim().replace(/[,()]/g, '')
+    if (school) {
+      query.or(`uploaded_by.eq.${user.id},and(scope.eq.school,school_name.ilike.${school})`)
+    } else {
+      query.eq('uploaded_by', user.id)
+    }
+  }
 
   const { data, error } = await query
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })

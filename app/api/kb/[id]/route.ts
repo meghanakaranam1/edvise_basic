@@ -14,6 +14,21 @@ async function requireAdmin(req: NextRequest): Promise<{ user: { id: string; ema
   return { user }
 }
 
+// Approve/reject stays admin-only (a teacher approving their own upload
+// would defeat the review step). Delete additionally allows the document's
+// own uploader — a teacher should be able to remove a school KB doc they
+// added themselves without needing the admin.
+async function requireAdminOrOwner(req: NextRequest, docId: string): Promise<{ user: { id: string; email?: string } } | null> {
+  const token = (req.headers.get('authorization') ?? '').replace('Bearer ', '').trim()
+  if (!token) return null
+  const { data: { user } } = await supabaseAdmin().auth.getUser(token)
+  if (!user) return null
+  if (user.email === ADMIN_EMAIL) return { user }
+  const { data: doc } = await supabaseAdmin().from('kb_documents').select('uploaded_by').eq('id', docId).single()
+  if (doc?.uploaded_by === user.id) return { user }
+  return null
+}
+
 // PATCH /api/kb/[id] — approve or reject
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const admin = await requireAdmin(req)
@@ -36,10 +51,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
 // DELETE /api/kb/[id] — remove doc + delete from Anthropic Files
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const admin = await requireAdmin(req)
-  if (!admin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-
   const { id } = await params
+  const admin = await requireAdminOrOwner(req, id)
+  if (!admin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { data } = await supabaseAdmin()
     .from('kb_documents')

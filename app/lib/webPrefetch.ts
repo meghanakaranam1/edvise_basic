@@ -57,7 +57,7 @@ export async function prefetchWeb(query: string): Promise<WebResult> {
     }
 
     console.log('✅ Web search done —', sources.length, 'sources,', summary.length, 'chars summary')
-    return { summary: summary.trim(), sources: sources.slice(0, 4) }
+    return { summary: summary.trim(), sources }
   } catch (err) {
     console.error('❌ Web search error:', err instanceof Error ? err.message : err)
     return { summary: '', sources: [] }

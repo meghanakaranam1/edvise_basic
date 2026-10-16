@@ -1,9 +1,12 @@
 'use client'
-import type { Agenda } from './types'
+import type { Agenda, ArtifactVersion } from './types'
 import GeneratedDocTab from './GeneratedDocTab'
 
 export default function AgendaTab({
   data,
+  history,
+  activeId,
+  onSelectVersion,
   generating,
   onGenerate,
   onSave,
@@ -12,6 +15,9 @@ export default function AgendaTab({
   onChange,
 }: {
   data?: Agenda
+  history?: ArtifactVersion[]
+  activeId?: string
+  onSelectVersion?: (id: string) => void
   generating: boolean
   onGenerate: () => void
   onSave?: () => void
@@ -22,6 +28,9 @@ export default function AgendaTab({
   return (
     <GeneratedDocTab
       data={data}
+      history={history}
+      activeId={activeId}
+      onSelectVersion={onSelectVersion}
       generating={generating}
       onGenerate={onGenerate}
       onSave={onSave}

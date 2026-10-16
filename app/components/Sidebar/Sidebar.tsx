@@ -5,7 +5,7 @@ import { listConversations, listSharedConversations } from '../../lib/db'
 import type { Conversation } from '../../lib/db'
 import type { SupabaseSession } from '../../lib/supabase'
 
-type MainView = 'chat' | 'conversations' | 'library-kb' | 'library-all' | 'library-strategy' | 'library-reports' | 'library-pending'
+type MainView = 'chat' | 'conversations' | 'library-kb' | 'library-school-kb' | 'library-all' | 'library-strategy' | 'library-reports' | 'library-pending'
   | 'actions' | 'settings' | 'kb'
 
 export type { MainView }
@@ -95,6 +95,12 @@ export default function Sidebar({
         {isAdmin && nav('library-kb', mainView === 'library-kb',
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" width="13" height="13"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>,
           'Knowledge base')}
+        {/* The shared "School-based" KB (🏫 chip in chat) — any teacher at a
+            school can upload/browse it, not just the admin. Associates the
+            long-unused School-based chip with a real place to manage it. */}
+        {nav('library-school-kb', mainView === 'library-school-kb',
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" width="13" height="13"><path d="M12 3l9 4.5-9 4.5-9-4.5z"/><path d="M5.5 9.5V15c0 1 3 3 6.5 3s6.5-2 6.5-3V9.5"/></svg>,
+          'School knowledge base')}
         {nav('library-all', mainView === 'library-all',
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" width="13" height="13"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>,
           'All documents')}
